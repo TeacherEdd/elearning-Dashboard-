@@ -1,104 +1,100 @@
-# ECKED eLearning Digital Maturity Monitor
+# ECKED School Monitoring Dashboard
 
-'n Webtoepassing vir Edmondo van der Berg se eLearning-skoolbesoeke in Eden en Sentraal-Karoo. Hierdie projek bou voort op die bestaande WCED-Elearning HTML-instrument en behou sy assesseringsafdelings, skoollyste en verslaguitleg.
+An advisor workspace for Edmondo van der Berg to monitor schools' digital maturity, record support, plan follow-ups and prepare management summaries for Eden & Central Karoo.
 
-## Wat werk reeds
+Repository: https://github.com/TeacherEdd/elearning-Dashboard-
 
-- Skoolkeuse volgens agt kringe, besoekdatum, adviseur en onderhoudbesonderhede.
-- Twaalf aanwysers oor Enabling Environment, e-Culture & Change Management en e-Teaching & Training.
-- Puntetoekenning van 1–5, outomatiese vlakke, sterk punte en ontwikkelingsbehoeftes.
-- Reëlgebaseerde aanbevelings en 'n sesweek-intervensieplan.
-- Verslagbesigtiging, wysiging, verwydering, druk/PDF en kopiëring na Word.
-- Distriksopsomming gebaseer op elke skool se jongste besoek; die tabel behou alle besoeke.
-- JSON-rugsteun en gevalideerde herstel; CSV-uitvoer vir verdere ontleding.
-- Browserberging met foutterugvoer en geen voorafgelaaide voorbeeld-skoolverslag nie.
+Live site: https://teacheredd.github.io/elearning-Dashboard-/
 
-## Vinnige voorskou
+## Advisor and management views
 
-Die oorspronklike aflaaipakket bevat ook `elearning-maturity-preview.html`, 'n gebundelde enkel-lêer-voorskou wat jy direk kan oopmaak. Die repository bevat die bronkode; `npm run build` skep die aanlyn weergawe. Dit gebruik plaaslike browserberging en deel nie sy data outomaties met 'n latere aanlyn webadres nie. Die GitHub-ontwikkelingsprojek gebruik steeds die bronlêers hieronder.
+- **My overview:** assessment coverage, unassessed schools, priority indicators, overdue actions, latest-score average, score changes and circuit coverage.
+- **School profiles:** all 200 schools in the supplied register, searchable by school and circuit, with dated assessment history, section scores, latest observations and support history.
+- **Support & follow-ups:** school visits, training, advice, follow-ups and resource support. Record the activity/action, responsible person, activity date, follow-up deadline, status and outcome. Existing records can be edited.
+- **Management summary:** select a reporting period and circuit, add commentary or decisions needed, and download a printable HTML snapshot. Open the downloaded report and use Print → Save as PDF if required.
+- **Existing assessment flow:** twelve indicators, 1–5 scoring, generated recommendations, individual reports, editing and deletion remain available.
 
-## Begin plaaslik
+Unassessed schools are clearly distinguished from low-scoring schools. Assessments older than 180 days are flagged for review. A low indicator (1–2) creates a priority flag even when the overall average is relatively high.
 
-Vereis Node.js 24 en npm.
+## Run and test
+
+Requires Node.js 24 and npm.
 
 ```bash
+git clone https://github.com/TeacherEdd/elearning-Dashboard-.git
+cd elearning-Dashboard-
 npm ci
 npm run dev
 ```
 
-Open die plaaslike adres wat Vite wys. Gebruik 'n webbediener; moenie `index.html` met 'n dubbelklik oopmaak nie.
-
 ```bash
 npm test
 npm run test:ui
-npm run build
 npm run preview
 ```
 
-Die produksieweergawe is in `dist/`. Dit bevat gebundelde JavaScript en CSS; die toepassing laai nie React, Tailwind of Babel vanaf 'n CDN tydens gebruik nie.
+`npm test` runs core scoring and advisor-model tests. `npm run test:ui` builds the production application and runs simulated DOM interaction tests. `npm run build` alone produces `dist/`. Browser visual layout and print/PDF output require separate visual review; the DOM tests do not verify those.
 
-## GitHub en publikasie
+React, icons and styles are bundled locally; the application does not fetch these libraries from CDNs during normal use.
 
-1. Die repository is https://github.com/TeacherEdd/elearning-Dashboard-.
-2. Kloon dit met `git clone https://github.com/TeacherEdd/elearning-Dashboard-.git` en werk vanuit die projek se wortel. Moenie `node_modules`, persoonlike rugsteunlêers of `.env`-lêers oplaai nie.
-3. Die `Check application`-workflow toets en bou elke push/pull request.
-4. Om GitHub Pages te gebruik: kies **Settings → Pages → Source → GitHub Actions**.
-5. Begin **Actions → Publish to GitHub Pages → Run workflow**. Publikasie is doelbewus handmatig.
+## Publish
 
-GitHub Pages is een opsie vir die huidige statiese weergawe. Geen aanmelding, gedeelde databasis of aanlyn AI-diens is in weergawe 0.1 geïmplementeer nie.
+GitHub Pages is configured for this repository. The publish workflow now runs on pushes to `main`, and can also be started manually from **Actions → Publish to GitHub Pages**. GitHub Pages must use **GitHub Actions** as its source. Changes to `main` are tested and built before publication.
 
-## Puntelogika
+The project is a static React application. Do not commit personal school reports, support logs, backups, `node_modules`, API keys or `.env` files.
 
-Elke aanwyser dra ewe veel tot die algehele gemiddelde by. Omdat die afdelings onderskeidelik 3, 4 en 5 aanwysers het, is hul effektiewe gewigte 25%, 33⅓% en 41⅔%. Die afdelings het dus nie gelyke gewig nie. Dit behou die oorspronklike instrument se metode.
+## Data, backups and manager access
 
-| Gemiddelde | Vlak |
+**This version does not have shared sign-in, a cloud database or automatic cross-device syncing.** The manager report is a dated export from the advisor's device, not a live shared dashboard. GitHub stores application code, not the school records entered into the dashboard.
+
+Two browser `localStorage` keys are used:
+
+- `wced-district-monitor-ai-v6`: assessments; the original key is retained for compatibility.
+- `ecked-advisor-support-v1`: support and follow-up records.
+
+The dashboard can read records already stored at the same web address. Different browsers, devices and web addresses have separate storage. Changing the code on the existing site does not change these keys.
+
+**Export backup** downloads version 2 JSON containing both assessments and support logs. **Restore backup** accepts version 2, legacy version 1 assessment backups, or a legacy assessment array. Legacy imports leave existing support records intact. Matching IDs are replaced only after confirmation. Incoming records are validated before storage changes, and an unsuccessful multi-key write attempts to restore the previous data. Derived assessment analysis is recalculated from the scores.
+
+CSV export contains assessment records only. The management report includes support records and outstanding actions. Export a backup regularly, particularly before changing browsers or devices. Incomplete assessment/support forms and management commentary are not autosaved.
+
+The original uploaded HTML tool did not contain a JSON export button. Migrating its separately stored browser data requires exporting those records from the original environment first; a new web address cannot automatically read them.
+
+## How metrics are calculated
+
+- **Coverage:** registered schools with at least one assessment dated on or before the snapshot date, divided by schools in the selected circuit scope. Support-only activity does not count as an assessment.
+- **School visit entries:** support entries marked School visit that are In progress or Completed; these are separate from assessment counts.
+- **Latest score:** each school contributes its latest dated assessment once. Same-date assessments use `updatedAt` where present; otherwise first-listed record wins.
+- **Change:** difference between the latest two recorded assessments, using raw averages. Above +0.05 points is improved; below −0.05 is declined; otherwise unchanged. Single-assessment schools have no comparison. Changes can span dates outside a selected reporting period and do not establish causation.
+- **Priority gap:** at least one indicator scored 1 or 2, regardless of the overall score.
+- **Stale assessment:** more than 180 calendar days before the snapshot date. This is a review cue, not an assumed official visit target.
+- **Overdue:** a non-completed support record with a due date before the snapshot date, and activity date no later than that snapshot date.
+- **Period activity:** assessments/support records with activity dates within the selected range, inclusively. Completion counts use the entered completion date.
+- **Management period:** school positions are reconstructed from assessments on or before the period-end date. Support statuses reflect their current recorded values; historical status transitions are not stored or reconstructed.
+- **Outside-register records:** imported schools outside the supplied register remain visible, labelled accordingly. They do not inflate registered-school coverage. Their assessments are included in the overall assessed-school average; the management export explains this distinction.
+
+All twelve indicators carry equal weight. The three sections contain 3, 4 and 5 indicators, so their effective overall weights are 25%, 33⅓% and 41⅔% respectively.
+
+| Raw average | Maturity level |
 | --- | --- |
-| 1 tot en met 2.5 | EMERGING |
-| Meer as 2.5, minder as 3.5 | ESTABLISHING |
-| 3.5 tot minder as 4.5 | INTEGRATED |
-| 4.5 tot 5 | TRANSFORMATIVE |
+| 1–2.5 inclusive | EMERGING |
+| Above 2.5, below 3.5 | ESTABLISHING |
+| 3.5 to below 4.5 | INTEGRATED |
+| 4.5–5 | TRANSFORMATIVE |
 
-Die klassifikasie gebruik die onafgeronde gemiddelde. Die skerm wys een desimale plek; 'n afgeronde waarde naby 'n grens kan dus na die volgende vlak lyk.
+Classification uses unrounded averages; displayed scores have one decimal place. Recommendations use the original built-in indicator guidance. No external AI service is connected; the internal `aiAnalysis` field name remains for format compatibility.
 
-Elke skool se jongste besoekdatum bepaal die distriksopsomming. By dieselfde datum gebruik die toepassing die jongste `updatedAt`, indien beskikbaar; anders die eerste ooreenstemmende rekord. Die geskiedenistabel en sy filters wys alle besoeke.
+## Structure
 
-## Data en rugsteun
+- `src/app.jsx`: school register, assessment form, original report layout and persistence.
+- `src/AdvisorDashboard.jsx`: advisor overview, school profiles, support log and management controls.
+- `src/advisor.js`: coverage/progress calculations, support validation and escaped management HTML generation.
+- `src/core.js`: assessment scoring, legacy backup validation and CSV export.
+- `tests/`: scoring, advisor calculations and simulated DOM user-flow checks.
+- `.github/workflows/`: checks and Pages publication.
 
-Verslae bly in die huidige browser en webadres se `localStorage`, met die bestaande sleutel `wced-district-monitor-ai-v6`. Dit is nie 'n gedeelde databasis nie. Skoolbesoekdata word nie na GitHub opgelaai wanneer die kode gepubliseer word nie.
+## Remaining integration work
 
-- Kies **Export backup** voor jy van toestel/browser/webadres verander.
-- **Restore backup** voeg rekords saam. Rekords met dieselfde ID word deur die rugsteun se weergawe vervang, ná bevestiging.
-- Herstel verwerp onvolledige rekords, verkeerde puntetipes, ongeldige datums en duplikaat-IDs. Afgeleide ontleding word van die punte af herbou.
-- CSV-uitvoer bevat alle besoeke en neutraliseer waardes wat as spreadsheet-formules geïnterpreteer kan word.
-- 'n Nuwe webadres kan nie outomaties die oorspronklike HTML-lêer se browserberging lees nie. Die oorspronklike lêer het nie 'n JSON-uitvoerknoppie nie; bestaande gestoorde data moet apart uit daardie oorspronklike browserberging uitgevoer word voordat dit geskuif word. Die nuwe invoer aanvaar ook 'n kaal reeks oorspronklike verslagrekords.
-- Voltooide verslae word gestoor; onvoltooide vorms word nog nie outomaties as konsepte herstel nie.
+Shared access needs an authenticated backend and access rules for the advisor and manager. No backend provider/account has been configured here. Future work can add shared records, read-only manager access, automatic backups, draft recovery, a full offline queue and a history of support status changes. The current bundle is not an offline PWA.
 
-Die toepassing het nog nie 'n service worker of betroubare volle aflyn-opstart nie. Gebundelde bates verminder afhanklikheid van eksterne dienste, maar dit maak nie die toepassing op sigself 'n aflyn-PWA nie.
-
-## Ontleding en AI
-
-Hierdie weergawe genereer aanbevelings uit die bestaande aanwyserriglyne. Dit stuur geen skooldata na 'n AI-verskaffer nie en bevat geen API-sleutel nie. Die vorige leë Gemini-koppeling en stil terugval is verwyder; die skerm verduidelik nou watter soort aanbevelings gebruik word.
-
-Die interne veldnaam `aiAnalysis` word vir bestaande formaatversoenbaarheid behou. Dit beteken nie dat 'n AI-diens gebruik is nie. Die aanbevelings vervang nie die adviseur se professionele oordeel nie.
-
-## Volgende ontwikkelingsfase
-
-- Aanmelding en 'n gedeelde databasis, met rolle vir adviseurs en toegangsbeheer per distrik.
-- Datamigrasie, veranderingsgeskiedenis en bedienerrugsteun.
-- Konsepte en aflyn-tou met veilige sinchronisering.
-- Enige toekomstige AI-koppeling via 'n bediener, met die sleutel buite die browser en duidelike aanduiding van AI-gegenereerde inhoud.
-- Verslagvergelyking tussen besoeke en verdere kringfilters.
-
-Hierdie dienste benodig nog 'n gekose gasheer/databasis en hul opstelling. Geen wolkdatabasis is deur hierdie pakket geskep nie.
-
-## Projekstruktuur
-
-- `src/app.jsx`: bestaande React-skerm, skoollys, aanbevelings en verslagdruk.
-- `src/core.js`: puntelogika, jongste-besoek-keuse, invoervalidering en uitvoer.
-- `src/styles.css`: Tailwind-invoer.
-- `tests/core.test.js`: toetse vir klassifikasie, opsommings, herstel en CSV.
-- `.github/workflows/`: outomatiese kontroles en handmatige Pages-publikasie.
-
-Beskryf veranderings en voer `npm test` en `npm run build` uit voordat veranderings saamgevoeg word. Die vyf kernlogika-toetse en twee gesimuleerde DOM-gebruikstoetse slaag. Die produksiebou slaag. 'n Volledige visuele browsertoets en druk/PDF-uitlegtoets is nog uitstaande; die plaaslike Chromium-proses kon nie in hierdie omgewing begin nie.
-
-Die kode bevat WCED-benaming uit die oorspronklike instrument; publikasie van die kode impliseer nie amptelike WCED-goedkeuring nie. Geen lisensie is gekies nie.
+WCED naming is inherited from the user's original instrument. No official departmental endorsement or software licence is implied.

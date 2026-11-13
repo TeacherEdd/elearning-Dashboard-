@@ -1,5 +1,7 @@
+import AdvisorDashboard from './AdvisorDashboard.jsx';
+import { SUPPORT_KEY, validateSupportLogs } from './advisor.js';
 import './styles.css';
-import { calculateReadiness, calculateDistrictInsights, validateReports, mergeReports, csvExport } from './core.js';
+import { calculateReadiness, validateReports, mergeReports, csvExport } from './core.js';
 
     import React, { useEffect, useMemo, useState } from 'react';
     import { createRoot } from 'react-dom/client';
@@ -632,7 +634,8 @@ Innovation | Accountability | Care | Responsiveness`;
       const [selectedAdvisor, setSelectedAdvisor] = useState('E. van der Berg');
       const [auditNotes, setAuditNotes] = useState('');
       const [interventionPlan, setInterventionPlan] = useState([]);
-      const [dashboardFilter, setDashboardFilter] = useState('ALL');
+      const [supportLogs, setSupportLogs] = useState([]);
+      const [supportError, setSupportError] = useState('');
 
       const [storageError, setStorageError] = useState('');
       const [notice, setNotice] = useState('');
@@ -665,6 +668,20 @@ Innovation | Accountability | Care | Responsiveness`;
         }
       }, []);
       useEffect(() => {
+        try {
+          const raw = localStorage.getItem(SUPPORT_KEY);
+          if (raw) setSupportLogs(validateSupportLogs(JSON.parse(raw)));
+        } catch(error) {setSupportError('Stored support records could not be read. The data has not been overwritten. Restore a valid backup.');}
+      }, []);
+      const persistSupport = (records) => {
+        try {
+          const validated = validateSupportLogs(records);
+          if (supportError.startsWith('Stored support') && !window.confirm('Saving will replace unreadable support data. Continue only if you have a backup.')) return false;
+          localStorage.setItem(SUPPORT_KEY, JSON.stringify(validated));
+          setSupportLogs(validated); setSupportError(''); return true;
+        } catch(error) {setSupportError('Support could not be saved. Keep the form open and retry. ' + error.message); return false;}
+      };
+      useEffect(() => {
         setAiAnalysis(null);
         setInterventionPlan([]);
       }, [scores, selectedSchool]);
@@ -675,21 +692,36 @@ Innovation | Accountability | Care | Responsiveness`;
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
       const exportBackup = () => download('elearning-backup-' + todayStr + '.json',
-        JSON.stringify({version: 1, exportedAt: new Date().toISOString(), reports: savedReports}, null, 2), 'application/json');
+        JSON.stringify({version: 2, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs}, null, 2), 'application/json');
       const importBackup = async (event) => {
         const file = event.target.files[0]; event.target.value = '';
         if (!file) return;
         try {
           if (file.size > 10 * 1024 * 1024) throw new Error('Backup exceeds 10 MB.');
           const parsed = JSON.parse(await file.text());
-          if (!Array.isArray(parsed) && parsed.version !== 1) throw new Error('Unsupported backup version.');
+          if (!Array.isArray(parsed) && ![1,2].includes(parsed.version)) throw new Error('Unsupported backup version.');
           const incoming = validateReports(Array.isArray(parsed) ? parsed : parsed.reports);
-          if (!window.confirm('Merge ' + incoming.length + ' reports? Matching IDs in this backup will replace saved copies. Export a backup first if needed.')) return;
-          if (persistReports(mergeReports(savedReports, incoming).map(report => {
+          const incomingSupport = validateSupportLogs(parsed.version === 2 ? parsed.supportLogs : []);
+          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records? Matching IDs will be replaced. Export a backup first if needed.')) return;
+          const nextReports = mergeReports(savedReports, incoming).map(report => {
             const ready = calculateReadiness(report.scores);
             const analysis = buildDetailedAnalysis(report.scores, ready.label, report.school);
             return {...report, avg: ready.score, readiness: ready.label, aiAnalysis: analysis, interventionPlan: generateInterventionPlan(analysis)};
-          }))) setNotice('Backup restored. ' + incoming.length + ' reports imported.');
+          });
+          const nextSupport = mergeReports(supportLogs, incomingSupport);
+          const oldReports = localStorage.getItem(STORAGE_KEY), oldSupport = localStorage.getItem(SUPPORT_KEY);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(nextReports));
+            localStorage.setItem(SUPPORT_KEY, JSON.stringify(nextSupport));
+          } catch(error) {
+            try {
+              if(oldReports===null) localStorage.removeItem(STORAGE_KEY); else localStorage.setItem(STORAGE_KEY, oldReports);
+              if(oldSupport===null) localStorage.removeItem(SUPPORT_KEY); else localStorage.setItem(SUPPORT_KEY, oldSupport);
+            } catch(rollbackError) {setStorageError('Restore failed and storage could not be rolled back. Export a backup of the current in-memory records before closing.');}
+            throw error;
+          }
+          setSavedReports(nextReports);setSupportLogs(nextSupport);setStorageError('');setSupportError('');
+          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records.');
         } catch(error) { setNotice('Import failed: ' + error.message); }
       };
 
@@ -708,30 +740,6 @@ Innovation | Accountability | Care | Responsiveness`;
       const formComplete = Boolean(
         selectedSchool && monitoringDate && selectedAdvisor.trim() && personSpeakingTo.trim() && designation.trim() && completedCount === totalIndicators
       );
-
-      const districtInsights = useMemo(() => calculateDistrictInsights(savedReports), [savedReports]);
-
-      const stats = useMemo(() => {
-        const counts = { EMERGING: 0, ESTABLISHING: 0, INTEGRATED: 0, TRANSFORMATIVE: 0 };
-        savedReports.forEach((report) => {
-          const level = report.readiness;
-          if (counts[level] !== undefined) counts[level] += 1;
-        });
-        return counts;
-      }, [savedReports]);
-
-      const filteredReports = useMemo(() => {
-        const reports = [...savedReports];
-
-        if (dashboardFilter === 'ALL') return reports;
-        if (dashboardFilter === 'AT_RISK') {
-          return reports.filter((report) => Number(report.avg || 0) <= 2.5 && Number(report.avg || 0) > 0);
-        }
-        if (dashboardFilter === 'STRONG') {
-          return reports.filter((report) => Number(report.avg || 0) >= 3.5);
-        }
-        return reports.filter((report) => report.readiness === dashboardFilter);
-      }, [savedReports, dashboardFilter]);
 
       const resetForm = () => {
         setSelectedCircuit('');
@@ -859,13 +867,14 @@ Innovation | Accountability | Care | Responsiveness`;
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               <aside className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-3">
-                <p><strong>Device storage:</strong> Reports stay in this browser. Export a backup to transfer them or protect against data loss. Recommendations use built-in rules; no AI service is connected.</p>
+                <p><strong>Device storage:</strong> Assessments and support records stay in this browser. Export a backup to transfer them or protect against data loss. Your manager does not have live access; use the Management summary to export a dated report. Recommendations use built-in rules; no AI service is connected.</p>
                 <div className="flex flex-wrap gap-3">
                   <button onClick={exportBackup} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export backup</button>
                   <label className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold cursor-pointer">Restore backup<input aria-label="Restore backup" type="file" accept=".json,application/json" className="hidden" onChange={importBackup}/></label>
-                  <button onClick={() => download('elearning-reports-' + todayStr + '.csv', csvExport(savedReports), 'text/csv;charset=utf-8')} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export CSV</button>
+                  <button onClick={() => download('elearning-reports-' + todayStr + '.csv', csvExport(savedReports), 'text/csv;charset=utf-8')} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export assessment CSV</button>
                 </div>
               </aside>
+              {supportError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{supportError}</p>}
               {storageError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{storageError}</p>}
               {notice && <p role="status" className="mb-4 rounded-xl bg-slate-100 p-4">{notice}</p>}
 
@@ -1098,168 +1107,9 @@ Innovation | Accountability | Care | Responsiveness`;
                 </div>
               )}
 
-              {/* VIEW: DASHBOARD */}
-              {view === 'dashboard' && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                    <div>
-                      <h2 className="text-3xl font-black text-slate-900 tracking-tight">District Overview</h2>
-                      <p className="text-slate-500 font-medium mt-1">Latest assessment per school. The table retains every visit for follow-up.</p>
-                    </div>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-[2rem] border border-slate-700 shadow-lg flex flex-col justify-between relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-6 opacity-10 transform translate-x-2 -translate-y-2"><BrainCircuit size={80} /></div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-2">Avg Readiness Score</div>
-                      <div>
-                        <div className="text-4xl font-black flex items-baseline gap-2">
-                          {districtInsights.avg} <span className="text-lg text-slate-400">/ 5.0</span>
-                        </div>
-                        <div className="text-xs font-black uppercase tracking-widest text-white mt-2 bg-white/10 inline-block px-2 py-1 rounded">{districtInsights.level}</div>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
-                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Schools Assessed</div>
-                      <div className="text-4xl font-black text-slate-900">{districtInsights.total}</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-red-50 to-white p-6 rounded-[2rem] border border-red-100 shadow-sm flex flex-col justify-between relative overflow-hidden hover:shadow-md transition">
-                      <div className="absolute top-0 right-0 p-6 opacity-5 transform translate-x-2 -translate-y-2"><AlertTriangle size={80} /></div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-600 mb-2">Schools At Risk (≤ 2.5)</div>
-                      <div className="text-4xl font-black text-red-600">{districtInsights.atRisk}</div>
-                    </div>
-                    <div className="bg-gradient-to-br from-green-50 to-white p-6 rounded-[2rem] border border-green-100 shadow-sm flex flex-col justify-between relative overflow-hidden hover:shadow-md transition">
-                      <div className="absolute top-0 right-0 p-6 opacity-5 transform translate-x-2 -translate-y-2"><Award size={80} /></div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-green-600 mb-2">Strong Schools (≥ 3.5)</div>
-                      <div className="text-4xl font-black text-green-600">{districtInsights.strong}</div>
-                    </div>
-                  </div>
-
-                  {/* Top 3 Problems */}
-                  {districtInsights.topProblems.length > 0 && (
-                    <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-6 md:p-8">
-                       <div className="flex items-center gap-3 mb-6">
-                         <div className="bg-orange-100 text-orange-600 p-2.5 rounded-xl">
-                           <TrendingUp size={20} />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-black text-slate-800 leading-none">Top 3 District Challenges</h3>
-                           <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-1.5">Most frequent critical weaknesses</p>
-                         </div>
-                       </div>
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                         {districtInsights.topProblems.map((prob, idx) => (
-                           <div key={idx} className="bg-slate-50 border border-slate-100 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group hover:border-orange-200 transition">
-                             <div className="absolute top-0 right-0 bg-slate-100 text-slate-300 font-black text-4xl p-2 rounded-bl-3xl opacity-50 group-hover:text-orange-100 transition">#{idx+1}</div>
-                             <span className="text-sm font-black text-slate-800 pr-8 relative z-10">{prob.name}</span>
-                             <div className="mt-4 text-[11px] font-bold text-slate-500 uppercase tracking-widest relative z-10">
-                               Flagged in <span className="text-orange-600 font-black px-2 py-1 bg-orange-100 rounded-md">{prob.count} schools</span>
-                             </div>
-                           </div>
-                         ))}
-                       </div>
-                    </div>
-                  )}
-
-                  <h3 className="text-lg font-bold">Visit history</h3>
-                  {/* Filters */}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => setDashboardFilter('ALL')}
-                      className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition shadow-sm ${dashboardFilter === 'ALL' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      All visits ({savedReports.length})
-                    </button>
-                    <button
-                      onClick={() => setDashboardFilter('AT_RISK')}
-                      className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition shadow-sm ${dashboardFilter === 'AT_RISK' ? 'bg-red-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      At Risk (≤ 2.5)
-                    </button>
-                    <button
-                      onClick={() => setDashboardFilter('STRONG')}
-                      className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition shadow-sm ${dashboardFilter === 'STRONG' ? 'bg-green-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      Strong (≥ 3.5)
-                    </button>
-                    {maturityLevels.map(level => (
-                      <button
-                        key={level.label}
-                        onClick={() => setDashboardFilter(level.label)}
-                        className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition shadow-sm ${dashboardFilter === level.label ? level.color + ' text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                      >
-                        {level.label} ({stats[level.label] || 0})
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Table */}
-                  <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto w-full">
-                      <table className="w-full text-left border-collapse whitespace-nowrap">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="p-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">School</th>
-                            <th className="p-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Readiness</th>
-                            <th className="p-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 text-center">Score</th>
-                            <th className="p-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Advisor</th>
-                            <th className="p-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredReports.length === 0 ? (
-                            <tr>
-                              <td colSpan="5" className="p-8 text-center text-slate-500 font-medium">No reports match the current filter.</td>
-                            </tr>
-                          ) : (
-                            filteredReports.map((report) => {
-                              const ml = maturityLevels.find(m => m.label === report.readiness) || maturityLevels[0];
-                              return (
-                                <tr key={report.id} className="hover:bg-slate-50 transition group">
-                                  <td className="p-5">
-                                    <div className="font-black text-slate-800">{report.school}</div>
-                                    <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 mt-1 tracking-wide">
-                                      <MapPin size={12} className="text-slate-400" /> {report.circuit} <span className="text-slate-300">|</span> {report.date}
-                                    </div>
-                                  </td>
-                                  <td className="p-5">
-                                    <span className={`inline-flex px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${ml.light} ${ml.text} border ${ml.border}`}>
-                                      {report.readiness}
-                                    </span>
-                                  </td>
-                                  <td className="p-5 text-center">
-                                    <span className="text-base font-black text-slate-800 bg-slate-100 px-3 py-1 rounded-lg">{report.avg}</span>
-                                  </td>
-                                  <td className="p-5">
-                                    <span className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                                      <UserCheck size={14} className="text-slate-400" /> {report.advisor}
-                                    </span>
-                                  </td>
-                                  <td className="p-5 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-100 transition-opacity">
-                                      <button onClick={() => setActiveReport(report)} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-400 transition hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 shadow-sm" title="View">
-                                        <Eye size={16} />
-                                      </button>
-                                      <button onClick={() => loadReportIntoForm(report)} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-400 transition hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 shadow-sm" title="Edit">
-                                        ✏️
-                                      </button>
-                                      <button onClick={() => deleteReport(report.id)} className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-400 transition hover:border-red-300 hover:text-red-600 hover:bg-red-50 shadow-sm" title="Delete">
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {view === 'dashboard' && <AdvisorDashboard database={schoolDatabase} reports={savedReports} logs={supportLogs} onSaveLogs={persistSupport} today={todayStr} download={download}
+                onNewAudit={(profile) => {resetForm(); if(profile){setSelectedCircuit(profile.circuit);setSelectedSchool(profile.school);} setView('form');}}
+                onViewReport={setActiveReport} onEditReport={loadReportIntoForm} onDeleteReport={deleteReport}/>}
             </main>
           </div>
           
