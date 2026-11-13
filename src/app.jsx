@@ -1,3 +1,4 @@
+import {EQUIPMENT_KEY,validateEquipment} from './equipment.js';
 import AdvisorDashboard from './AdvisorDashboard.jsx';
 import { SUPPORT_KEY, validateSupportLogs } from './advisor.js';
 import './styles.css';
@@ -634,6 +635,8 @@ Innovation | Accountability | Care | Responsiveness`;
       const [selectedAdvisor, setSelectedAdvisor] = useState('E. van der Berg');
       const [auditNotes, setAuditNotes] = useState('');
       const [interventionPlan, setInterventionPlan] = useState([]);
+      const [equipmentRecords,setEquipmentRecords] = useState([]);
+      const [equipmentError,setEquipmentError] = useState('');
       const [supportLogs, setSupportLogs] = useState([]);
       const [supportError, setSupportError] = useState('');
 
@@ -673,6 +676,17 @@ Innovation | Accountability | Care | Responsiveness`;
           if (raw) setSupportLogs(validateSupportLogs(JSON.parse(raw)));
         } catch(error) {setSupportError('Stored support records could not be read. The data has not been overwritten. Restore a valid backup.');}
       }, []);
+      useEffect(() => {
+        try {const raw=localStorage.getItem(EQUIPMENT_KEY);if(raw)setEquipmentRecords(validateEquipment(JSON.parse(raw)));}
+        catch(error){setEquipmentError('Stored equipment records could not be read. Existing data has not been overwritten. Restore a valid backup.');}
+      }, []);
+      const persistEquipment = records => {
+        try {
+          const validated=validateEquipment(records);
+          if(equipmentError.startsWith('Stored equipment')&&!window.confirm('Saving will replace unreadable equipment data. Continue only if you have a backup.'))return false;
+          localStorage.setItem(EQUIPMENT_KEY,JSON.stringify(validated));setEquipmentRecords(validated);setEquipmentError('');return true;
+        } catch(error){setEquipmentError('Equipment could not be saved. Keep the form open and retry. '+error.message);return false;}
+      };
       const persistSupport = (records) => {
         try {
           const validated = validateSupportLogs(records);
@@ -692,36 +706,40 @@ Innovation | Accountability | Care | Responsiveness`;
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
       const exportBackup = () => download('elearning-backup-' + todayStr + '.json',
-        JSON.stringify({version: 2, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs}, null, 2), 'application/json');
+        JSON.stringify({version: 3, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs, equipmentRecords}, null, 2), 'application/json');
       const importBackup = async (event) => {
         const file = event.target.files[0]; event.target.value = '';
         if (!file) return;
         try {
           if (file.size > 10 * 1024 * 1024) throw new Error('Backup exceeds 10 MB.');
           const parsed = JSON.parse(await file.text());
-          if (!Array.isArray(parsed) && ![1,2].includes(parsed.version)) throw new Error('Unsupported backup version.');
+          if (!Array.isArray(parsed) && ![1,2,3].includes(parsed.version)) throw new Error('Unsupported backup version.');
           const incoming = validateReports(Array.isArray(parsed) ? parsed : parsed.reports);
-          const incomingSupport = validateSupportLogs(parsed.version === 2 ? parsed.supportLogs : []);
-          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records? Matching IDs will be replaced. Export a backup first if needed.')) return;
+          const incomingSupport = validateSupportLogs(parsed.version >= 2 ? parsed.supportLogs : []);
+          const incomingEquipment=validateEquipment(parsed.version===3?parsed.equipmentRecords:[]);
+          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records and ' + incomingEquipment.length + ' equipment snapshots? Matching IDs will be replaced. Export a backup first if needed.')) return;
           const nextReports = mergeReports(savedReports, incoming).map(report => {
             const ready = calculateReadiness(report.scores);
             const analysis = buildDetailedAnalysis(report.scores, ready.label, report.school);
             return {...report, avg: ready.score, readiness: ready.label, aiAnalysis: analysis, interventionPlan: generateInterventionPlan(analysis)};
           });
           const nextSupport = mergeReports(supportLogs, incomingSupport);
-          const oldReports = localStorage.getItem(STORAGE_KEY), oldSupport = localStorage.getItem(SUPPORT_KEY);
+          const nextEquipment = [...new Map([...equipmentRecords,...incomingEquipment].map(r=>[r.id,r])).values()];
+          const oldReports = localStorage.getItem(STORAGE_KEY), oldSupport = localStorage.getItem(SUPPORT_KEY),oldEquipment=localStorage.getItem(EQUIPMENT_KEY);
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(nextReports));
             localStorage.setItem(SUPPORT_KEY, JSON.stringify(nextSupport));
+            localStorage.setItem(EQUIPMENT_KEY, JSON.stringify(nextEquipment));
           } catch(error) {
             try {
               if(oldReports===null) localStorage.removeItem(STORAGE_KEY); else localStorage.setItem(STORAGE_KEY, oldReports);
               if(oldSupport===null) localStorage.removeItem(SUPPORT_KEY); else localStorage.setItem(SUPPORT_KEY, oldSupport);
+              if(oldEquipment===null) localStorage.removeItem(EQUIPMENT_KEY); else localStorage.setItem(EQUIPMENT_KEY, oldEquipment);
             } catch(rollbackError) {setStorageError('Restore failed and storage could not be rolled back. Export a backup of the current in-memory records before closing.');}
             throw error;
           }
-          setSavedReports(nextReports);setSupportLogs(nextSupport);setStorageError('');setSupportError('');
-          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records.');
+          setSavedReports(nextReports);setSupportLogs(nextSupport);setEquipmentRecords(nextEquipment);setStorageError('');setSupportError('');setEquipmentError('');
+          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records, ' + incomingEquipment.length + ' equipment snapshots.');
         } catch(error) { setNotice('Import failed: ' + error.message); }
       };
 
@@ -867,13 +885,14 @@ Innovation | Accountability | Care | Responsiveness`;
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               <aside className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-3">
-                <p><strong>Device storage:</strong> Assessments and support records stay in this browser. Export a backup to transfer them or protect against data loss. Your manager does not have live access; use the Management summary to export a dated report. Recommendations use built-in rules; no AI service is connected.</p>
+                <p><strong>Device storage:</strong> Assessments, equipment and support records stay in this browser. Export a backup to transfer them or protect against data loss. Your manager does not have live access; use the Management summary to export a dated report. Recommendations use built-in rules; no AI service is connected.</p>
                 <div className="flex flex-wrap gap-3">
                   <button onClick={exportBackup} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export backup</button>
                   <label className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold cursor-pointer">Restore backup<input aria-label="Restore backup" type="file" accept=".json,application/json" className="hidden" onChange={importBackup}/></label>
                   <button onClick={() => download('elearning-reports-' + todayStr + '.csv', csvExport(savedReports), 'text/csv;charset=utf-8')} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export assessment CSV</button>
                 </div>
               </aside>
+              {equipmentError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{equipmentError}</p>}
               {supportError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{supportError}</p>}
               {storageError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{storageError}</p>}
               {notice && <p role="status" className="mb-4 rounded-xl bg-slate-100 p-4">{notice}</p>}
@@ -1107,7 +1126,7 @@ Innovation | Accountability | Care | Responsiveness`;
                 </div>
               )}
 
-              {view === 'dashboard' && <AdvisorDashboard database={schoolDatabase} reports={savedReports} logs={supportLogs} onSaveLogs={persistSupport} today={todayStr} download={download}
+              {view === 'dashboard' && <AdvisorDashboard database={schoolDatabase} reports={savedReports} logs={supportLogs} equipment={equipmentRecords} onSaveEquipment={persistEquipment} onSaveLogs={persistSupport} today={todayStr} download={download}
                 onNewAudit={(profile) => {resetForm(); if(profile){setSelectedCircuit(profile.circuit);setSelectedSchool(profile.school);} setView('form');}}
                 onViewReport={setActiveReport} onEditReport={loadReportIntoForm} onDeleteReport={deleteReport}/>}
             </main>
