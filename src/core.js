@@ -52,7 +52,8 @@ export function validateReports(value) {
     if (!report.scores || Object.keys(report.scores).some(k=>!INDICATORS.includes(k)&&k!=='teaching-1') || ('teaching-1' in report.scores && (!Number.isInteger(report.scores['teaching-1'])||report.scores['teaching-1']<1||report.scores['teaching-1']>5)) || INDICATORS.some(k=>!Number.isInteger(report.scores[k]) || report.scores[k]<1 || report.scores[k]>5)) fail();
     if (report.notes != null && (typeof report.notes!=='string' || report.notes.length>50000)) fail();
     if(report.informationSource!=null&&(typeof report.informationSource!=='string'||report.informationSource.length>500))fail();
-    return {informationSource:report.informationSource||'Not specified',id:report.id,updatedAt:report.updatedAt || '',school:report.school.trim(),circuit:report.circuit.trim(),date:report.date,staff:report.staff.trim(),designation:report.designation.trim(),advisor:report.advisor.trim(),notes:report.notes||'',scores:Object.fromEntries([...INDICATORS,...('teaching-1' in report.scores?['teaching-1']:[])].map(k=>[k,report.scores[k]]))};
+    if(report.supportProvided!=null&&(typeof report.supportProvided!=='string'||report.supportProvided.length>10000))fail();
+    return {supportProvided:report.supportProvided||'',informationSource:report.informationSource||'Not specified',id:report.id,updatedAt:report.updatedAt || '',school:report.school.trim(),circuit:report.circuit.trim(),date:report.date,staff:report.staff.trim(),designation:report.designation.trim(),advisor:report.advisor.trim(),notes:report.notes||'',scores:Object.fromEntries([...INDICATORS,...('teaching-1' in report.scores?['teaching-1']:[])].map(k=>[k,report.scores[k]]))};
   });
 }
 
@@ -68,7 +69,7 @@ export function csvExport(reports) {
     if (/^[\s]*[=+\-@\t\r]/.test(text)) text = "'"+text;
     return '"'+text.replaceAll('"','""')+'"';
   };
-  const rows = [['School','Circuit','Date','Advisor','Contact','Designation','Score','Level',...INDICATORS,'Information source','Notes'],
-    ...reports.map(r=>{const ready=calculateReadiness(r.scores);return [r.school,r.circuit,r.date,r.advisor,r.staff,r.designation,ready.score,ready.label,...INDICATORS.map(k=>r.scores[k]),r.informationSource||'Not specified',r.notes];})];
+  const rows = [['School','Circuit','Date','Advisor','Contact','Designation','Score','Level',...INDICATORS,'Information source','Notes','Support provided'],
+    ...reports.map(r=>{const ready=calculateReadiness(r.scores);return [r.school,r.circuit,r.date,r.advisor,r.staff,r.designation,ready.score,ready.label,...INDICATORS.map(k=>r.scores[k]),r.informationSource||'Not specified',r.notes,r.supportProvided||''];})];
   return '\uFEFF'+rows.map(row=>row.map(cell).join(',')).join('\r\n');
 }

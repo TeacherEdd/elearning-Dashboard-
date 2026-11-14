@@ -48,12 +48,29 @@ Records remain in browser localStorage at the existing site address:
 - `ecked-school-report-drafts-v1`: incomplete findings and edits saved as drafts.
 - `ecked-school-equipment-v1`: equipment verification snapshots.
 - `ecked-advisor-support-v1`: recorded recommendations and retained historical support entries.
+- `ecked-action-impact-v1`: linked school findings, support, dated observations and correction history.
 
 Drafts are saved explicitly, not continuously autosaved. Finalising an edited draft preserves the original final record until a complete replacement is successfully saved. Finalisation and draft removal are written together with rollback on storage failure. Finalising an incomplete record is blocked. Management commentary is included in the export but is not autosaved.
 
-Version 4 backups contain reports, drafts, equipment and support/recommendation records. Versions 1–3 and bare legacy assessment arrays are also accepted. Older backups merge existing collections and do not erase collection types they do not contain. Incoming records are validated before storage writes; matching IDs replace records after confirmation, and multi-key writes attempt rollback if a later write fails.
+Version 5 backups contain reports, drafts, equipment, support/recommendation records and Action to Impact evidence. Versions 1–4 and bare legacy assessment arrays are also accepted. Older backups merge existing collections and do not erase collection types they do not contain. Incoming records are validated before storage writes; matching IDs replace records after confirmation, and multi-key writes attempt rollback if a later write fails.
 
 No school findings are stored in the GitHub repository. Different devices, browsers and web addresses have separate local records. Shared authentication, cloud storage and live manager access are not configured. Managers receive exported snapshots. Keep backups regularly through Reports → Backups.
+
+## 2027 focus: From Action to Impact
+
+The school Summary includes a compact What we found → What we did → What changed panel, without another main navigation item. Start with a finding and optional support provided. Later updates require only an observation and an evidence judgement; advisor/date details are tucked into an expandable section. More than one focus can be recorded per school, selected within the same panel.
+
+The Findings step has one optional Support provided field. Finalising a report with a finding and support creates a linked impact baseline automatically. Editing that report updates the linked record without duplicating the need or deleting its observation history. Findings with support are kept separate from planned training recommendations; the app never claims an action occurred simply because a course was recommended.
+
+Baseline finding, support and each later observation retain their own names and dates. Optional details allow one advisor to record a baseline and the other to provide support or record later evidence. Baseline corrections retain the previous text and correction author. These are self-entered names, not authenticated identities. Shared storage and sign-in remain unconfigured; this update does not create a multi-user cloud system.
+
+Evidence judgements are Not checked, Implementation seen, Early positive change, Sustained positive change and No change yet. Implementation is not automatically positive learner impact. Sustained positive change requires positive evidence on an earlier date; a single observation or two observations on the same day are insufficient. This is a minimum check, not a guarantee of impact or causation. Later judgements do not delete previous observations.
+
+Overview counts use the latest observation for each recorded need as at the current date. Positive-change cases also count as implementation, so those categories overlap. Counts are needs/cases, not unique schools, and cover records up to the snapshot date (including a baseline captured before 2027). No observed change is inferred from maturity-score improvements alone.
+
+Management reports reuse the same school notes and evidence as at the reporting end date. Individual reports show evidence as at that assessment date. Future observations are excluded. Historical exports use the current corrected baseline; they are generated views, not immutable original PDF snapshots.
+
+Version 5 backups preserve the full impact history. Restoring older backups keeps it intact. Matching impact record IDs merge independent observation IDs, preserving both advisors' observations when backups are exchanged. Conflicting content under the same observation ID stops restoration before any writes. This supports safe manual transfer, not live collaboration.
 
 ## Equipment and infrastructure
 
@@ -100,6 +117,7 @@ Core/model tests cover classification, legacy LMS preservation, drafts and rollb
 - `src/app.jsx`: school register, current report/form state, persistence and individual report generation.
 - `src/core.js`, `src/advisor.js`: scoring, validation, school profiles and management export.
 - `src/drafts.js`: partial report validation and multi-key write rollback.
+- `src/ImpactPanel.jsx`, `src/impact.js`: minimal school impact capture, history, validation, counts and report exports.
 - `src/SchoolEquipment.jsx`, `src/equipment.js`: equipment capture and summaries.
 - `src/TrainingRecommendations.jsx`, `src/training.js`, `src/training-sessions.json`: needs-based course suggestions.
 - `src/assets/ecked-logo.png`: supplied district logo, used with the user's instruction.

@@ -1,3 +1,5 @@
+import {IMPACT_KEY,validateImpacts,findingFromReport,latestImpactEvidence,mergeImpactRecords} from './impact.js';
+import {ImpactReportEvidence} from './ImpactPanel.jsx';
 import AppShell from './AppShell.jsx';
 import CaptureFindings from './CaptureFindings.jsx';
 import {DRAFTS_KEY,validateDrafts,writeCollections} from './drafts.js';
@@ -298,7 +300,7 @@ import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExpor
       );
     }
 
-    function ReportModal({ report, onClose, onEdit, totalIndicators }) {
+    function ReportModal({ report, onClose, onEdit, totalIndicators, impactRecords=[] }) {
       const [copiedWord, setCopiedWord] = useState(false);
 
       const localCalc = useMemo(() => {
@@ -339,6 +341,12 @@ Scoring basis: 11 indicators; LMS excluded
 
 RECORDED FINDINGS AND EVIDENCE
 ${report.notes || 'No additional observations recorded.'}
+
+SUPPORT PROVIDED
+${report.supportProvided||'Not recorded'}
+
+FROM ACTION TO IMPACT
+${impactRecords.filter(r=>r.school===report.school&&r.circuit===report.circuit&&r.baseline.date<=report.date).map(r=>{const e=latestImpactEvidence(r,report.date);return `Finding: ${r.baseline.finding}\nSupport: ${r.baseline.action||'Not recorded'}\nLatest evidence: ${e?.evidence||'Not checked'}\nJudgement: ${e?.status||'Not checked'}${e?` (${e.date}; ${e.author})`:''}`;}).join('\n\n')||'No linked evidence recorded as at this report date.'}
 
 --------------------------------------------------------------------------------
 2. DETAILED INDICATOR SCORES
@@ -480,6 +488,8 @@ Innovation | Accountability | Care | Responsiveness`;
                 {/* Report Content Blocks */}
                 
                 <div className="rounded-2xl border border-slate-200 p-6 mb-6"><h3 className="section-title">Recorded findings and evidence</h3><p className="text-sm text-slate-600 mb-3">Information source: {report.informationSource||'Not specified'}</p><p className="whitespace-pre-wrap text-sm leading-relaxed">{report.notes||'No additional observations recorded.'}</p></div>
+                {report.supportProvided&&<div className="rounded-2xl border border-slate-200 p-6 mb-6"><h3 className="section-title">Support provided</h3><p className="whitespace-pre-wrap text-sm leading-relaxed">{report.supportProvided}</p></div>}
+                <ImpactReportEvidence records={impactRecords.filter(r=>r.school===report.school&&r.circuit===report.circuit)} asOf={report.date}/>
                 {/* Executive Summary */}
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 mb-6 print:border print:p-6 print:mb-6">
                   <h3 className="section-title print:block hidden mt-0">1. Executive Summary</h3>
@@ -623,6 +633,9 @@ Innovation | Accountability | Care | Responsiveness`;
       const [designation, setDesignation] = useState('');
       const [selectedAdvisor, setSelectedAdvisor] = useState('E. van der Berg');
       const [auditNotes, setAuditNotes] = useState('');
+      const [supportProvided,setSupportProvided] = useState('');
+      const [impactRecords,setImpactRecords] = useState([]);
+      const [impactError,setImpactError] = useState('');
       const [informationSource,setInformationSource] = useState('Not specified');
       const [draftRecords,setDraftRecords] = useState([]);
       const [draftEditingId,setDraftEditingId] = useState(null);
@@ -675,6 +688,11 @@ Innovation | Accountability | Care | Responsiveness`;
       }, []);
       useEffect(()=>{try{const raw=localStorage.getItem(DRAFTS_KEY);if(raw)setDraftRecords(validateDrafts(JSON.parse(raw)));}catch(error){setDraftError('Stored drafts could not be read. They have not been overwritten. Restore a valid backup.');}},[]);
       const persistDrafts=records=>{try{const valid=validateDrafts(records);if(draftError.startsWith('Stored drafts')&&!window.confirm('Saving replaces unreadable draft storage. Continue only with a backup.'))return false;localStorage.setItem(DRAFTS_KEY,JSON.stringify(valid));setDraftRecords(valid);setDraftError('');return true;}catch(error){setDraftError('Draft could not be saved. Keep this page open. '+error.message);return false;}};
+      useEffect(()=>{try{const raw=localStorage.getItem(IMPACT_KEY);if(raw)setImpactRecords(validateImpacts(JSON.parse(raw)));}catch(error){setImpactError('Stored impact records could not be read. They have not been overwritten. Restore a valid backup.');}},[]);
+      const persistImpacts=(records,advisor)=>{try{
+        if(impactError.startsWith('Stored impact')){setNotice('Restore a valid impact backup before saving, to protect unreadable records.');return false;}
+        const valid=validateImpacts(records);localStorage.setItem(IMPACT_KEY,JSON.stringify(valid));setImpactRecords(valid);setImpactError('');if(advisor?.trim())setSelectedAdvisor(advisor.trim());return true;
+      }catch(error){setImpactError('Impact evidence could not be saved. Keep the form open and retry. '+error.message);return false;}};
       const persistEquipment = records => {
         try {
           const validated=validateEquipment(records);
@@ -701,19 +719,20 @@ Innovation | Accountability | Care | Responsiveness`;
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
       const exportBackup = () => download('elearning-backup-' + todayStr + '.json',
-        JSON.stringify({version: 4, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs, equipmentRecords, drafts:draftRecords}, null, 2), 'application/json');
+        JSON.stringify({version: 5, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs, equipmentRecords, drafts:draftRecords, impactRecords}, null, 2), 'application/json');
       const importBackup = async (event) => {
         const file = event.target.files[0]; event.target.value = '';
         if (!file) return;
         try {
           if (file.size > 10 * 1024 * 1024) throw new Error('Backup exceeds 10 MB.');
           const parsed = JSON.parse(await file.text());
-          if (!Array.isArray(parsed) && ![1,2,3,4].includes(parsed.version)) throw new Error('Unsupported backup version.');
+          if (!Array.isArray(parsed) && ![1,2,3,4,5].includes(parsed.version)) throw new Error('Unsupported backup version.');
           const incoming = validateReports(Array.isArray(parsed) ? parsed : parsed.reports);
           const incomingSupport = validateSupportLogs(parsed.version >= 2 ? parsed.supportLogs : []);
           const incomingEquipment=validateEquipment(parsed.version>=3?parsed.equipmentRecords:[]);
-          const incomingDrafts=validateDrafts(parsed.version===4?parsed.drafts:[]);
-          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records and ' + incomingEquipment.length + ' equipment snapshots and ' + incomingDrafts.length + ' drafts? Matching IDs will be replaced. Export a backup first if needed.')) return;
+          const incomingDrafts=validateDrafts(parsed.version>=4?parsed.drafts:[]);
+          const incomingImpacts=validateImpacts(parsed.version>=5?parsed.impactRecords:[]);
+          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records and ' + incomingEquipment.length + ' equipment snapshots and ' + incomingDrafts.length + ' drafts and ' + incomingImpacts.length + ' impact records? Matching report IDs will be replaced; impact observation histories are merged. Export a backup first if needed.')) return;
           const nextReports = mergeReports(savedReports, incoming).map(report => {
             const ready = calculateReadiness(report.scores);
             const analysis = buildDetailedAnalysis(report.scores, ready.label, report.school);
@@ -722,9 +741,10 @@ Innovation | Accountability | Care | Responsiveness`;
           const nextSupport = mergeReports(supportLogs, incomingSupport);
           const nextEquipment = [...new Map([...equipmentRecords,...incomingEquipment].map(r=>[r.id,r])).values()];
           const nextDrafts=[...new Map([...draftRecords,...incomingDrafts].map(d=>[d.id,d])).values()];
-          writeCollections(localStorage,[[STORAGE_KEY,nextReports],[SUPPORT_KEY,nextSupport],[EQUIPMENT_KEY,nextEquipment],[DRAFTS_KEY,nextDrafts]]);
-          setSavedReports(nextReports);setSupportLogs(nextSupport);setEquipmentRecords(nextEquipment);setDraftRecords(nextDrafts);setStorageError('');setSupportError('');setEquipmentError('');setDraftError('');
-          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records, ' + incomingEquipment.length + ' equipment snapshots, ' + incomingDrafts.length + ' drafts.');
+          const nextImpacts=mergeImpactRecords(impactRecords,incomingImpacts);
+          writeCollections(localStorage,[[STORAGE_KEY,nextReports],[SUPPORT_KEY,nextSupport],[EQUIPMENT_KEY,nextEquipment],[DRAFTS_KEY,nextDrafts],[IMPACT_KEY,nextImpacts]]);
+          setSavedReports(nextReports);setSupportLogs(nextSupport);setEquipmentRecords(nextEquipment);setDraftRecords(nextDrafts);setImpactRecords(nextImpacts);setStorageError('');setSupportError('');setEquipmentError('');setDraftError('');setImpactError('');
+          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records, ' + incomingEquipment.length + ' equipment snapshots, ' + incomingDrafts.length + ' drafts, ' + incomingImpacts.length + ' impact records.');
         } catch(error) { setNotice('Import failed: ' + error.message); }
       };
 
@@ -741,7 +761,7 @@ Innovation | Accountability | Care | Responsiveness`;
       const currentReadiness = calculateReadiness(scores);
       const completedCount = INDICATORS.filter(k=>Number.isInteger(scores[k])&&scores[k]>=1&&scores[k]<=5).length;
       const formComplete = Boolean(
-        selectedSchool && validDate(monitoringDate) && monitoringDate<=todayStr && selectedAdvisor.trim() && personSpeakingTo.trim() && designation.trim() && completedCount === totalIndicators
+        selectedSchool && validDate(monitoringDate) && monitoringDate<=todayStr && selectedAdvisor.trim() && personSpeakingTo.trim() && designation.trim() && completedCount === totalIndicators && (!supportProvided.trim()||auditNotes.trim())
       );
 
       const resetForm = () => {
@@ -753,6 +773,7 @@ Innovation | Accountability | Care | Responsiveness`;
         setDesignation('');
         setMonitoringDate(todayStr);
         setAuditNotes('');
+        setSupportProvided('');
         setInformationSource('Not specified');
         setDraftEditingId(null);
         setInterventionPlan([]);
@@ -769,6 +790,7 @@ Innovation | Accountability | Care | Responsiveness`;
         setSelectedAdvisor(report.advisor || 'E. van der Berg');
         setMonitoringDate(report.date || todayStr);
         setAuditNotes(report.notes || '');
+        setSupportProvided(report.supportProvided||'');
         setInformationSource(report.informationSource||'Not specified');
         setDraftEditingId(null);
         setInterventionPlan(report.interventionPlan || []);
@@ -793,7 +815,7 @@ Innovation | Accountability | Care | Responsiveness`;
 
       const saveReport = () => {
         if (!formComplete) return;
-        if(storageError.startsWith('Stored reports')||draftError.startsWith('Stored drafts')){setNotice('Restore a valid backup before finalising, so unreadable records are not replaced.');return;}
+        if(storageError.startsWith('Stored reports')||draftError.startsWith('Stored drafts')||(supportProvided.trim()&&impactError.startsWith('Stored impact'))){setNotice('Restore a valid backup before finalising, so unreadable records are not replaced.');return;}
 
         setIsSaving(true);
         const localCalc = buildDetailedAnalysis(scores, currentReadiness.label, selectedSchool);
@@ -817,6 +839,7 @@ Innovation | Accountability | Care | Responsiveness`;
           designation,
           scores: { ...(savedReports.find(r=>r.id===editingReportId)?.scores||{}), ...scores },
           notes: auditNotes,
+          supportProvided,
           informationSource,
           aiAnalysis: finalAnalysis,
           interventionPlan: generatedIntervention
@@ -826,7 +849,7 @@ Innovation | Accountability | Care | Responsiveness`;
           ? savedReports.map(r => r.id === editingReportId ? reportPayload : r)
           : [reportPayload, ...savedReports];
 
-        try {const nextDrafts=draftRecords.filter(d=>d.id!==draftEditingId);writeCollections(localStorage,[[STORAGE_KEY,updatedReports],[DRAFTS_KEY,nextDrafts]]);setSavedReports(updatedReports);setDraftRecords(nextDrafts);setStorageError('');setDraftError('');setNotice('Final report saved on this device.');}
+        try {const nextDrafts=draftRecords.filter(d=>d.id!==draftEditingId);const nextImpacts=findingFromReport(reportPayload,impactRecords,new Date().toISOString());const changes=[[STORAGE_KEY,updatedReports],[DRAFTS_KEY,nextDrafts]];if(supportProvided.trim())changes.push([IMPACT_KEY,nextImpacts]);writeCollections(localStorage,changes);setSavedReports(updatedReports);setDraftRecords(nextDrafts);setImpactRecords(nextImpacts);setStorageError('');setDraftError('');setNotice('Final report saved on this device.'+(supportProvided.trim()?' Finding and support added to Action to Impact.':''));}
         catch(error){setStorageError(error.message);setIsSaving(false);return;}
 
         setTimeout(() => {
@@ -836,16 +859,16 @@ Innovation | Accountability | Care | Responsiveness`;
         }, 500);
       };
 
-      const captureData={circuit:selectedCircuit,school:selectedSchool,date:monitoringDate,staff:personSpeakingTo,designation,advisor:selectedAdvisor,notes:auditNotes,scores,informationSource};
-      const changeCapture=(field,value)=>({circuit:setSelectedCircuit,school:setSelectedSchool,date:setMonitoringDate,staff:setPersonSpeakingTo,designation:setDesignation,advisor:setSelectedAdvisor,notes:setAuditNotes,scores:setScores,informationSource:setInformationSource}[field]?.(value));
+      const captureData={circuit:selectedCircuit,school:selectedSchool,date:monitoringDate,staff:personSpeakingTo,designation,advisor:selectedAdvisor,notes:auditNotes,supportProvided,scores,informationSource};
+      const changeCapture=(field,value)=>({circuit:setSelectedCircuit,school:setSelectedSchool,date:setMonitoringDate,staff:setPersonSpeakingTo,designation:setDesignation,advisor:setSelectedAdvisor,notes:setAuditNotes,supportProvided:setSupportProvided,scores:setScores,informationSource:setInformationSource}[field]?.(value));
       const beginCapture=(profile)=>{resetForm();if(profile){setSelectedCircuit(profile.circuit);setSelectedSchool(profile.school);}setView('capture');};
       const saveDraft=()=>{const id=draftEditingId||crypto.randomUUID();const record={id,reportId:editingReportId,updatedAt:new Date().toISOString(),data:captureData};const next=[record,...draftRecords.filter(d=>d.id!==id)];if(persistDrafts(next)){setDraftEditingId(id);setNotice('Draft saved on this device. It is excluded from final school scores.');}};
-      const resumeDraft=d=>{const data=d.data;setSelectedCircuit(data.circuit);setSelectedSchool(data.school);setMonitoringDate(data.date);setPersonSpeakingTo(data.staff);setDesignation(data.designation);setSelectedAdvisor(data.advisor);setAuditNotes(data.notes);setScores(data.scores);setInformationSource(data.informationSource||'Not specified');setDraftEditingId(d.id);setEditingReportId(savedReports.some(r=>r.id===d.reportId)?d.reportId:null);setAiAnalysis(null);setView('capture');};
-      const dataTools=<div className="i-data-tools"><div className="i-actions"><button className="i-button" onClick={exportBackup}>Export backup</button><label className="i-button">Restore backup<input aria-label="Restore backup" type="file" accept=".json,application/json" className="sr-only" onChange={importBackup}/></label><button className="i-button" onClick={()=>download('elearning-reports-'+todayStr+'.csv',csvExport(savedReports),'text/csv;charset=utf-8')}>Export assessment CSV</button></div><p className="i-note">Backups include final reports, drafts, equipment and recorded recommendations. Shared live manager access is not connected.</p></div>;
+      const resumeDraft=d=>{const data=d.data;setSelectedCircuit(data.circuit);setSelectedSchool(data.school);setMonitoringDate(data.date);setPersonSpeakingTo(data.staff);setDesignation(data.designation);setSelectedAdvisor(data.advisor);setAuditNotes(data.notes);setSupportProvided(data.supportProvided||'');setScores(data.scores);setInformationSource(data.informationSource||'Not specified');setDraftEditingId(d.id);setEditingReportId(savedReports.some(r=>r.id===d.reportId)?d.reportId:null);setAiAnalysis(null);setView('capture');};
+      const dataTools=<div className="i-data-tools"><div className="i-actions"><button className="i-button" onClick={exportBackup}>Export backup</button><label className="i-button">Restore backup<input aria-label="Restore backup" type="file" accept=".json,application/json" className="sr-only" onChange={importBackup}/></label><button className="i-button" onClick={()=>download('elearning-reports-'+todayStr+'.csv',csvExport(savedReports),'text/csv;charset=utf-8')}>Export assessment CSV</button></div><p className="i-note">Backups include final reports, drafts, equipment, recommendations and impact evidence. Shared live manager access is not connected.</p></div>;
       return <><PrintStyles/><AppShell page={view} today={todayStr} onNavigate={page=>{if(page==='capture'&&view!=='capture')beginCapture();else setView(page);}}>
-        {[storageError,supportError,equipmentError,draftError].filter(Boolean).map((error,i)=><p className="i-error" role="alert" key={i}>{error}</p>)}
+        {[storageError,supportError,equipmentError,draftError,impactError].filter(Boolean).map((error,i)=><p className="i-error" role="alert" key={i}>{error}</p>)}
         {notice&&<p className="i-notice" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}>×</button></p>}
-        {view==='capture'?<CaptureFindings key={String(editingReportId||'capture')} data={captureData} onChange={changeCapture} database={schoolDatabase} sections={monitoringSections} ratingScale={ratingScale} onSaveDraft={saveDraft} onFinalise={saveReport} onPreview={generateAIAnalysis} complete={formComplete} isSaving={isSaving} analysis={aiAnalysis} equipment={equipmentRecords} onSaveEquipment={persistEquipment} today={todayStr} isEdit={Boolean(editingReportId)} onExit={()=>setView('overview')}/>:<AdvisorDashboard page={view} onNavigate={setView} database={schoolDatabase} reports={savedReports} drafts={draftRecords} logs={supportLogs} equipment={equipmentRecords} onSaveEquipment={persistEquipment} onSaveLogs={persistSupport} today={todayStr} download={download} dataTools={dataTools} onNewAudit={beginCapture} onResumeDraft={resumeDraft} onDeleteDraft={id=>{if(window.confirm('Delete this unfinished draft? Final reports are unaffected.'))persistDrafts(draftRecords.filter(d=>d.id!==id));}} onViewReport={setActiveReport} onEditReport={loadReportIntoForm} onDeleteReport={deleteReport}/>}</AppShell><ReportModal report={activeReport} onClose={()=>setActiveReport(null)} onEdit={loadReportIntoForm} totalIndicators={totalIndicators}/></>;
+        {view==='capture'?<CaptureFindings key={String(editingReportId||'capture')} data={captureData} onChange={changeCapture} database={schoolDatabase} sections={monitoringSections} ratingScale={ratingScale} onSaveDraft={saveDraft} onFinalise={saveReport} onPreview={generateAIAnalysis} complete={formComplete} isSaving={isSaving} analysis={aiAnalysis} equipment={equipmentRecords} onSaveEquipment={persistEquipment} today={todayStr} isEdit={Boolean(editingReportId)} onExit={()=>setView('overview')}/>:<AdvisorDashboard page={view} onNavigate={setView} database={schoolDatabase} reports={savedReports} impacts={impactRecords} onSaveImpacts={persistImpacts} defaultAdvisor={selectedAdvisor} drafts={draftRecords} logs={supportLogs} equipment={equipmentRecords} onSaveEquipment={persistEquipment} onSaveLogs={persistSupport} today={todayStr} download={download} dataTools={dataTools} onNewAudit={beginCapture} onResumeDraft={resumeDraft} onDeleteDraft={id=>{if(window.confirm('Delete this unfinished draft? Final reports are unaffected.'))persistDrafts(draftRecords.filter(d=>d.id!==id));}} onViewReport={setActiveReport} onEditReport={loadReportIntoForm} onDeleteReport={deleteReport}/>}</AppShell><ReportModal report={activeReport} onClose={()=>setActiveReport(null)} onEdit={loadReportIntoForm} totalIndicators={totalIndicators} impactRecords={impactRecords}/></>;
     }
 
     // Mount the React Application
