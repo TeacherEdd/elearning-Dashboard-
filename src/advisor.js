@@ -1,3 +1,4 @@
+import {validateActivity,validateActivityHistory} from './support-activity.js';
 import {validateTrainingLink} from './training.js';
 import {INDICATORS, calculateReadiness} from './core.js';
 
@@ -19,13 +20,14 @@ export function validateSupportLogs(value) {
     if (!entry || typeof entry!=='object') fail();
     for(const field of ['id','school','circuit','owner','summary']) if(typeof entry[field]!=='string' || !entry[field].trim() || entry[field].length>10000) fail();
     if(ids.has(entry.id)) fail();ids.add(entry.id);
-    if(!/^Circuit [1-8]$/.test(entry.circuit) || !validDate(entry.date) || (entry.dueDate && !validDate(entry.dueDate))) fail();
+    if(!( /^Circuit [1-8]$/.test(entry.circuit) || entry.circuit==='District' && entry.school==='District / officials') || !validDate(entry.date) || (entry.dueDate && !validDate(entry.dueDate))) fail();
     if(!['School visit','Training','Advice','Follow-up','Resource support'].includes(entry.type) || !['Planned','In progress','Completed'].includes(entry.status)) fail();
     if(entry.notes != null && (typeof entry.notes!=='string' || entry.notes.length>50000)) fail();
     if(entry.updatedAt && (typeof entry.updatedAt!=='string' || !Number.isFinite(Date.parse(entry.updatedAt)))) fail();
     if(entry.completedDate && !validDate(entry.completedDate)) fail();
     if(entry.status==='Completed' && !validDate(entry.completedDate)) fail();
-    return {training:validateTrainingLink(entry.training),id:entry.id,school:entry.school.trim(),circuit:entry.circuit.trim(),owner:entry.owner.trim(),summary:entry.summary.trim(),date:entry.date,dueDate:entry.dueDate||'',type:entry.type,status:entry.status,notes:entry.notes||'',updatedAt:entry.updatedAt||'',completedDate:entry.status==='Completed'?entry.completedDate:''};
+    const activity=validateActivity(entry.activity);
+    return {activity,activityHistory:validateActivityHistory(entry.activityHistory),training:validateTrainingLink(entry.training),id:entry.id,school:entry.school.trim(),circuit:entry.circuit.trim(),owner:entry.owner.trim(),summary:entry.summary.trim(),date:entry.date,dueDate:entry.dueDate||'',type:entry.type,status:entry.status,notes:entry.notes||'',updatedAt:entry.updatedAt||'',completedDate:entry.status==='Completed'?entry.completedDate:''};
   });
 }
 export function schoolProfiles(database,reports,logs,asOf,equipment=[]) {
@@ -34,12 +36,12 @@ export function schoolProfiles(database,reports,logs,asOf,equipment=[]) {
     const key=schoolKey(circuit,school);groups.set(key,{key,school,circuit,history:[],support:[],inRegister:true});
   }
   // Preserve imported schools outside the register; never silently hide their records.
-  for(const item of [...reports,...logs,...equipment]) {
+  for(const item of [...reports,...logs.filter(l=>l.circuit!=='District'),...equipment]) {
     const key=schoolKey(item.circuit,item.school);
     if(!groups.has(key)) groups.set(key,{key,school:item.school,circuit:item.circuit,history:[],support:[],inRegister:false});
   }
   for(const r of reports) if(r.date<=asOf) groups.get(schoolKey(r.circuit,r.school)).history.push(r);
-  for(const l of logs) if(l.date<=asOf) groups.get(schoolKey(l.circuit,l.school)).support.push(l);
+  for(const l of logs) if(l.circuit!=='District'&&l.date<=asOf) groups.get(schoolKey(l.circuit,l.school)).support.push(l);
   return [...groups.values()].map(profile=>{
     profile.history.sort((a,b)=>b.date.localeCompare(a.date)||(b.updatedAt||'').localeCompare(a.updatedAt||''));
     profile.support.sort((a,b)=>b.date.localeCompare(a.date));
@@ -71,10 +73,10 @@ export function managementMetrics(profiles,logs,from,to) {
     })};
 }
 export const escapeHtml = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function managementDocument({profiles,logs,from,to,circuit,managerNotes,generatedOn,equipmentHtml='',logoUrl='',impactHtml=''}) {
+export function managementDocument({profiles,logs,from,to,circuit,managerNotes,generatedOn,equipmentHtml='',logoUrl='',impactHtml='',kraHtml='',advisor='Both advisors'}) {
   const m=managementMetrics(profiles,logs,from,to),h=escapeHtml;
   const table=(headers,rows)=>`<table><thead><tr>${headers.map(x=>`<th>${h(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(x=>`<td>${h(x)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>ECKED Management Summary</title><style>body{font:15px/1.5 Arial,sans-serif;color:#13243a;max-width:1100px;margin:40px auto;padding:20px}h1{font-size:28px}h2{margin-top:28px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;border:1px solid #cbd5e1;padding:8px;vertical-align:top}th{background:#edf2f7}p{white-space:pre-wrap}small{color:#475569}@media print{body{margin:0;padding:0}thead{display:table-header-group}tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body>${logoUrl?`<img src="${h(logoUrl)}" alt="Eden and Central Karoo Education District" style="width:100px;height:100px;float:right;object-fit:contain">`:""}<h1>ECKED · School Findings Report</h1><p>Subject advisor: E. van der Berg<br>Scope: ${h(circuit||'All circuits')} · Period: ${h(from)} to ${h(to)}<br>Generated: ${h(generatedOn)} · Findings snapshot as at ${h(to)}</p>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>ECKED Management Summary</title><style>body{font:15px/1.5 Arial,sans-serif;color:#13243a;max-width:1100px;margin:40px auto;padding:20px}h1{font-size:28px}h2{margin-top:28px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;border:1px solid #cbd5e1;padding:8px;vertical-align:top}th{background:#edf2f7}p{white-space:pre-wrap}small{color:#475569}@media print{body{margin:0;padding:0}thead{display:table-header-group}tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body>${logoUrl?`<img src="${h(logoUrl)}" alt="Eden and Central Karoo Education District" style="width:100px;height:100px;float:right;object-fit:contain">`:""}<h1>ECKED · School Findings Report</h1><p>Advisor scope: ${h(advisor)}<br>Scope: ${h(circuit||'All circuits')} · Period: ${h(from)} to ${h(to)}<br>Generated: ${h(generatedOn)} · Findings snapshot as at ${h(to)}</p>
   <p><strong>${m.assessed} of ${m.total} registered schools assessed (${m.coverage}%).</strong> ${m.unassessed} not yet assessed. Latest-score average: ${m.average??'Not available'}/5. ${m.priority} assessed schools have at least one indicator at 1–2; ${m.stale} assessments are older than 180 days.</p>
   <p>Final reports in period: ${m.assessments} across ${m.schoolsAssessedInPeriod} schools. Scores are calculated using 11 included indicators; LMS is excluded. Drafts are not rated.</p>
   <p>Latest two recorded assessments: ${m.improved} improved, ${m.declined} declined, ${m.unchanged} unchanged. These comparisons are not restricted to the reporting period and do not establish that support caused the change.</p>
@@ -83,6 +85,7 @@ export function managementDocument({profiles,logs,from,to,circuit,managerNotes,g
   <h2>School position as at ${h(to)}</h2>${table(['School','Circuit','Last assessed','Level','Score /5','Change (latest two)','Attention'],profiles.map(p=>[p.school+(p.inRegister?'':' [outside register]'),p.circuit,p.latest?.date||'Not assessed',p.level,p.score?.toFixed(1)??'—',p.delta===null?'No comparison':(p.delta>=0?'+':'')+p.delta.toFixed(2),p.priority]))}
   <h2>Recorded school findings</h2>${table(['School','Assessment date','Information source','Findings and evidence'],profiles.filter(p=>p.latest).map(p=>[p.school,p.latest.date,p.latest.informationSource||'Not specified',p.latest.notes||'No additional observations recorded.']))}
   <h2>Recorded recommendations and support in period</h2>${table(['Date','School','Type','Recorded advice / support','Advisor / responsible person','Training verification'],logs.filter(l=>l.date>=from&&l.date<=to).map(l=>[l.date,l.school,l.type,l.summary,l.owner,l.training?`Attendance: ${l.training.attendance}; implementation: ${l.training.implementation}`:'—']))}
+  ${kraHtml}
   ${impactHtml}
   ${equipmentHtml}
   <small>This is an exported snapshot from records on the advisor's device, not a shared live database. Unassessed schools have no maturity rating. Support statuses reflect their current recorded state; historical status changes are not reconstructed. This report records school findings and advice; it is not a visit schedule. Coverage uses the supplied school register; outside-register assessments are listed separately and included in the overall assessed-school average. No official performance target is assumed.</small></body></html>`;

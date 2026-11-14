@@ -123,3 +123,15 @@ Core/model tests cover classification, legacy LMS preservation, drafts and rollb
 - `src/assets/ecked-logo.png`: supplied district logo, used with the user's instruction.
 
 Future integration can add authenticated shared records and read-only manager access. Departmental branding does not imply official approval of this custom tool. No software licence has been selected.
+
+## Job-description reporting (0.6)
+
+Capture findings now offers Full school assessment or Quick support record, retaining the same four main navigation items. Quick records capture support already delivered to teachers, SMTs, subject advisors or officials without maturity scoring. One activity can link several registered schools across circuits; no school links means district/official support, which is excluded from school coverage. Linked schools receive one Action to Impact baseline, including optional intended change. School Summary remains the place to record later observations.
+
+Quick support includes one explicit KRA, optional resource URL/subject/phase, support method, attendance, implementation, verification evidence and barrier state. Confirmed outcomes require evidence; no automatic LMS maturity score is added. Update evidence from Reports → KRA report → Recorded support activities or a school's Recommendations. Updates preserve earlier support versions. Dates and school links are fixed when updating to protect linked evidence chronology.
+
+Reports → KRA report offers quarter/date and advisor filters, counts activities once across school links, and exports all four performance areas. It includes linked school follow-up evidence up to the period end. Attendance/implementation counts are activity counts, not teacher headcounts. Verification fields reflect their current saved state, including later corrections; historical reports are generated views rather than immutable original snapshots. Management summaries include the KRA section as well. Legacy recommendations remain visible but are not recategorised as delivered activities.
+
+Overview includes reporting prompts for support without follow-up evidence, explicitly recorded open barriers and equipment snapshots older than 180 days. These are prompts to verify information, not visit schedules or official performance targets.
+
+Version 5 backups retain the optional activity metadata and correction history in supportLogs. Existing backups remain readable. Shared authentication and live synchronisation remain unconfigured: connecting a managed database and authorising the two advisor accounts and a read-only manager account is still required. No school data or credentials are committed to the public repository.
