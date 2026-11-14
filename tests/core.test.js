@@ -7,7 +7,7 @@ test('maturity thresholds use raw averages and exclude invalid or unknown scores
   assert.equal(calculateReadiness({}).label,'PENDING');
   assert.equal(calculateReadiness(scores(1)).label,'EMERGING');
   for (const [average,expected] of [[2.5,'EMERGING'],[3.5,'INTEGRATED'],[4.5,'TRANSFORMATIVE']]) {
-    const vals=Object.fromEntries(INDICATORS.map((k,i)=>[k,i<6?Math.floor(average):Math.ceil(average)]));
+    const vals={'env-0':Math.floor(average),'env-1':Math.ceil(average)};
     assert.equal(calculateReadiness(vals).label,expected);
   }
   assert.equal(calculateReadiness({...scores(3),extra:5,'env-0':99}).score,'3.0');
@@ -31,4 +31,10 @@ test('restore discards untrusted derived analysis and merges numeric/string IDs'
 test('CSV quotes multiline text and neutralizes spreadsheet formulas',()=>{
  const out=csvExport([{...report(),school:'=HYPERLINK("bad")',notes:'line 1\nline "2"'}]);
  assert.ok(out.includes('"\'=HYPERLINK(""bad"")"'));assert.ok(out.includes('line ""2""'));assert.ok(out.startsWith('\uFEFF'));
+});
+
+test('eleven-indicator scoring ignores LMS while preserving the original legacy value',()=>{
+ const legacy={...report(),scores:{...scores(4),'teaching-1':1,'teaching-2':5},informationSource:'Staff reported'};
+ const restored=validateReports([legacy])[0];assert.equal(restored.scores['teaching-1'],1);assert.equal(restored.scores['teaching-2'],5);assert.equal(restored.informationSource,'Staff reported');assert.equal(calculateReadiness(restored.scores).score,'4.1');assert.equal(INDICATORS.length,11);assert.ok(!INDICATORS.includes('teaching-1'));
+ const exported=csvExport([restored]);assert.ok(!exported.split('\r\n')[0].includes('teaching-1'));
 });

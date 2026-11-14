@@ -1,0 +1,7 @@
+import React from 'react';
+import {LayoutDashboard,School,SquarePen,Files} from 'lucide-react';
+import logo from './assets/ecked-logo.png';
+export default function AppShell({page,onNavigate,children,today}){
+ const links=[['overview','Overview',LayoutDashboard],['schools','Schools',School],['capture','Capture findings',SquarePen],['reports','Reports',Files]];
+ return <div className="insights-shell" id="app-main-wrapper"><aside className="insights-sidebar"><div className="insights-brand"><img src={logo} alt="Eden and Central Karoo Education District"/><div>School findings<span>eLearning reporting</span></div></div><nav aria-label="Main navigation">{links.map(([id,label,Icon])=><button key={id} aria-current={page===id?'page':undefined} onClick={()=>onNavigate(id)}><Icon size={18} aria-hidden="true"/>{label}</button>)}</nav><div className="insights-advisor">E. van der Berg<span>Subject advisor</span><p>School findings & reporting</p></div></aside><div className="insights-main"><header className="insights-topbar"><div><span className="insights-top-title">Eden & Central Karoo</span><span>School findings and reports</span></div><span className="insights-local">Records on this device · {today}</span></header><main className="insights-content">{children}</main><footer className="insights-footer">Reports, equipment and drafts are stored in this browser. Use Reports → Backups to keep a copy. Manager access is through exported reports.</footer></div></div>;
+}

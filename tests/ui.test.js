@@ -2,124 +2,51 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
-const tick = () => new Promise(resolve=>setTimeout(resolve,30));
-const bundle = () => readFileSync(new URL('../dist/assets/'+readdirSync(new URL('../dist/assets/',import.meta.url)).find(n=>n.endsWith('.js')),import.meta.url),'utf8');
-async function setup(storage,support,equipment) {
- const dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'https://example.test/elearning-maturity/',runScripts:'dangerously',pretendToBeVisual:true});
- dom.window.confirm=()=>true;
- if(equipment!==undefined) dom.window.localStorage.setItem('ecked-school-equipment-v1',JSON.stringify(equipment));
- if(support!==undefined) dom.window.localStorage.setItem('ecked-advisor-support-v1',JSON.stringify(support));
- if(storage!==undefined) dom.window.localStorage.setItem('wced-district-monitor-ai-v6',storage);
- dom.window.eval(bundle());
- await tick();return dom;
+import {INDICATORS} from '../src/core.js';
+const REPORTS='wced-district-monitor-ai-v6',SUPPORT='ecked-advisor-support-v1',EQUIPMENT='ecked-school-equipment-v1',DRAFTS='ecked-school-report-drafts-v1';
+const tick=(ms=30)=>new Promise(r=>setTimeout(r,ms));
+async function setup(values={}){
+ const dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'https://example.test/elearning-Dashboard-/',runScripts:'dangerously',pretendToBeVisual:true});
+ const w=dom.window,NativeDate=w.Date;w.Date=class extends NativeDate{constructor(...a){super(...(a.length?a:['2026-11-14T10:00:00Z']));}static now(){return new NativeDate('2026-11-14T10:00:00Z').getTime();}};w.confirm=()=>true;
+ for(const [k,v]of Object.entries(values))w.localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v));
+ const asset=readdirSync(new URL('../dist/assets/',import.meta.url)).find(f=>f.endsWith('.js'));w.eval(readFileSync(new URL('../dist/assets/'+asset,import.meta.url),'utf8').replaceAll('import.meta.url',JSON.stringify('https://example.test/elearning-Dashboard-/assets/index.js')));await tick();return dom;
 }
-const click=(win,name)=>{const el=[...win.document.querySelectorAll('button')].find(b=>b.textContent.trim()===name);assert.ok(el,'button '+name);el.click();};
-function change(win,el,value) {const proto=el.tagName==='SELECT'?win.HTMLSelectElement.prototype:win.HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto,'value').set.call(el,value);el.dispatchEvent(new win.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));}
-test('empty dashboard, complete assessment, save, reload and delete last report',async()=>{
- const dom=await setup();const w=dom.window;const d=w.document;
- assert.match(d.body.textContent,/School Monitoring Dashboard/);
- assert.match(d.body.textContent,/Not yet assessed/);
- click(w,'New Audit');await tick();
- change(w,d.querySelectorAll('select')[0],'Circuit 8');await tick();
- change(w,d.querySelectorAll('select')[1],'HEIDEDAL PRIM');
- change(w,d.querySelector('input[placeholder="e.g. Mr. S. Jacobs"]'),'Test Principal');
- const inputs=[...d.querySelectorAll('input')];
- const role=inputs.find(x=>x.placeholder?.includes('Principal /')) || inputs.find(x=>x.placeholder?.includes('ICT'));
- assert.ok(role,'designation field');change(w,role,'Principal');
- for (const button of [...d.querySelectorAll('button')].filter(b=>b.textContent.trim()==='3')) button.click();
- await tick();
- const save=[...d.querySelectorAll('button')].find(b=>b.textContent.includes('Save'));
- assert.ok(save && !save.disabled,'complete form can save');save.click();await tick();
- const raw=w.localStorage.getItem('wced-district-monitor-ai-v6');
- assert.equal(JSON.parse(raw).length,1);
- const restored=await setup(raw);assert.match(restored.window.document.body.textContent,/School Monitoring Dashboard/);
- click(restored.window,'School profiles');await tick();click(restored.window,'HEIDEDAL PRIM');await tick();restored.window.document.querySelector('button[title="Delete"]').click();await tick();
- assert.deepEqual(JSON.parse(restored.window.localStorage.getItem('wced-district-monitor-ai-v6')),[]);
- const empty=await setup('[]');assert.match(empty.window.document.body.textContent,/No assessments yet/);
- dom.window.close();restored.window.close();empty.window.close();
+const click=(w,name)=>{const b=[...w.document.querySelectorAll('button')].find(b=>b.textContent.trim()===name);assert.ok(b,'button '+name);b.click();};
+function change(w,el,value){assert.ok(el,'field exists');const p=el.tagName==='SELECT'?w.HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?w.HTMLTextAreaElement.prototype:w.HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(el,value);el.dispatchEvent(new w.Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));}
+const input=(w,label)=>w.document.querySelector('[aria-label="'+label+'"]');
+const scores=n=>Object.fromEntries(INDICATORS.map(k=>[k,n]));
+const report=(extra={})=>({id:'report-1',school:'HEIDEDAL PRIM',circuit:'Circuit 8',date:'2026-11-13',staff:'Principal',designation:'Principal',advisor:'Advisor',notes:'Observed classroom use',scores:scores(4),...extra});
+const openSchool=async(w)=>{click(w,'Schools');await tick();change(w,input(w,'Search schools'),'HEIDEDAL');await tick();click(w,'HEIDEDAL PRIM');await tick();};
+const backups=async(w)=>{click(w,'Reports');await tick();click(w,'Backups');await tick();};
+const restore=async(w,data)=>{const el=input(w,'Restore backup');Object.defineProperty(el,'files',{configurable:true,value:[{size:100,text:async()=>JSON.stringify(data)}]});el.dispatchEvent(new w.Event('change',{bubbles:true}));await tick();};
+async function blobText(w,button){let blob;w.URL.createObjectURL=b=>{blob=b;return 'blob:test';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=()=>{};click(w,button);await tick();return await new Promise(resolve=>{const r=new w.FileReader();r.onload=()=>resolve(r.result);r.readAsText(blob);});}
+test('approved shell has ECKED logo, four reporting routes and no visit-planning controls',async()=>{
+ const dom=await setup(),w=dom.window,d=w.document;assert.match(d.body.textContent,/School findings at a glance/);assert.equal(d.querySelectorAll('nav[aria-label="Main navigation"] button').length,4);assert.ok(d.querySelector('img[alt="Eden and Central Karoo Education District"]'));assert.doesNotMatch(d.body.textContent,/Overdue|Support planner|Upcoming visits/);
+ click(w,'Capture findings');await tick();click(w,'2. Findings');await tick();assert.equal(d.querySelectorAll('select[aria-label$=" rating"]').length,11);assert.doesNotMatch(d.body.textContent,/LMS Usage at School/);dom.window.close();
 });
-test('corrupt stored data remains intact and shows recovery message',async()=>{
- const dom=await setup('invalid JSON');
- assert.match(dom.window.document.body.textContent,/Stored reports could not be read/);
- assert.equal(dom.window.localStorage.getItem('wced-district-monitor-ai-v6'),'invalid JSON');
- dom.window.close();
+test('legacy twelve-score record retains LMS value in storage but reports use eleven correctly mapped indicators',async()=>{
+ const legacy=report({scores:{...scores(4),'teaching-1':1,'teaching-2':5}}),dom=await setup({[REPORTS]:[legacy]}),w=dom.window;
+ await openSchool(w);assert.match(w.document.body.textContent,/4.1 \/5/);click(w,'Assessment findings');await tick();assert.match(w.document.body.textContent,/4.3 \/5/);click(w,'Open full report');await tick();assert.doesNotMatch(w.document.body.textContent,/LMS Usage at School/);assert.equal(JSON.parse(w.localStorage.getItem(REPORTS))[0].scores['teaching-1'],1);dom.window.close();
 });
-
-test('school profile distinguishes no assessment from low maturity and preselects assessment school',async()=>{
- const dom=await setup();const w=dom.window;
- click(w,'School profiles');await tick();
- change(w,w.document.querySelector('[aria-label="Circuit scope"]'),'Circuit 8');await tick();
- click(w,'HEIDEDAL PRIM');await tick();
- assert.match(w.document.body.textContent,/No assessment recorded/);assert.match(w.document.body.textContent,/No maturity conclusion/);
- click(w,'New assessment for this school');await tick();
- assert.equal(w.document.querySelectorAll('select')[0].value,'Circuit 8');assert.equal(w.document.querySelectorAll('select')[1].value,'HEIDEDAL PRIM');
- dom.window.close();
+test('partial findings save as draft, reload, and do not create a final school rating',async()=>{
+ const dom=await setup(),w=dom.window;click(w,'Capture findings');await tick();change(w,input(w,'Education circuit'),'Circuit 8');await tick();change(w,input(w,'School'),'HEIDEDAL PRIM');change(w,input(w,'Person consulted'),'ICT Champion');click(w,'2. Findings');await tick();change(w,input(w,'Connectivity Quality rating'),'3');click(w,'Save draft');await tick();
+ const drafts=JSON.parse(w.localStorage.getItem(DRAFTS));assert.equal(drafts.length,1);assert.equal(w.localStorage.getItem(REPORTS),null);
+ const restored=await setup({[DRAFTS]:drafts}),r=restored.window;click(r,'Reports');await tick();click(r,'Drafts');await tick();click(r,'Continue draft');await tick();assert.equal(input(r,'School').value,'HEIDEDAL PRIM');click(r,'2. Findings');await tick();assert.equal(input(r,'Connectivity Quality rating').value,'3');dom.window.close();restored.window.close();
 });
-test('support logging persists, completion clears overdue and management report exports',async()=>{
- const dom=await setup();const w=dom.window,d=w.document;
- click(w,'Support & follow-ups');await tick();
- const input=(label)=>d.querySelector('[aria-label="'+label+'"]');
- const setText=(el,value)=>{Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype,'value').set.call(el,value);el.dispatchEvent(new w.Event('input',{bubbles:true}));};
- change(w,input('Support circuit'),'Circuit 8');await tick();change(w,input('Support school'),'HEIDEDAL PRIM');change(w,input('Support type'),'Training');
- setText(input('Support provided or agreed action'),'Support teacher digital resource creation');change(w,input('Support status'),'In progress');
- change(w,input('Follow-up due'),new Date(Date.now()-86400000).toISOString().slice(0,10));await tick();
- click(w,'Save support record');await tick();
- let records=JSON.parse(w.localStorage.getItem('ecked-advisor-support-v1'));assert.equal(records.length,1);assert.equal(records[0].type,'Training');assert.match(d.body.textContent,/Overdue/);
- click(w,'Edit support');await tick();change(w,input('Support status'),'Completed');await tick();click(w,'Save support record');await tick();
- records=JSON.parse(w.localStorage.getItem('ecked-advisor-support-v1'));assert.equal(records[0].status,'Completed');assert.ok(records[0].completedDate);
- click(w,'Management summary');await tick();assert.match(d.body.textContent,/Coverage at period end/);
- setText(input('Advisor management commentary'),'Manager decision requested');await tick();
- let exported;w.URL.createObjectURL=blob=>{exported=blob;return 'blob:example';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=()=>{};
- click(w,'Download manager report');await tick();assert.ok(exported);assert.equal(exported.type,'text/html;charset=utf-8');
- const content=await new Promise(resolve=>{const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.readAsText(exported);});
- assert.match(content,/Manager decision requested/);assert.match(content,/Support teacher digital resource creation/);
- click(w,'My overview');await tick();assert.match(d.body.textContent,/School Monitoring Dashboard/);
- dom.window.close();
+test('capture workflow finalises eleven-indicator findings with the information source',async()=>{
+ const dom=await setup(),w=dom.window;click(w,'Capture findings');await tick();change(w,input(w,'Education circuit'),'Circuit 8');await tick();change(w,input(w,'School'),'HEIDEDAL PRIM');change(w,input(w,'Person consulted'),'ICT Champion');change(w,input(w,'Designation'),'ICT Champion');change(w,input(w,'Information source'),'Staff reported');click(w,'Next →');await tick();
+ for(const el of w.document.querySelectorAll('select[aria-label$=" rating"]'))change(w,el,'4');change(w,input(w,'Evidence and observations'),'Teachers demonstrated digital resources.');await tick();click(w,'Save draft');await tick();click(w,'5. Review');await tick();click(w,'Finalise report');await tick(550);
+ const records=JSON.parse(w.localStorage.getItem(REPORTS));assert.equal(records.length,1);assert.equal(Object.keys(records[0].scores).length,11);assert.equal(records[0].informationSource,'Staff reported');assert.equal(JSON.parse(w.localStorage.getItem(DRAFTS)).length,0);assert.match(w.document.body.textContent,/Final school reports/);dom.window.close();
 });
-
-test('version 2 backup restores support, legacy restore preserves it, and invalid import changes neither collection',async()=>{
- const dom=await setup();const w=dom.window,d=w.document;
- const support={id:'restored-support',school:'HEIDEDAL PRIM',circuit:'Circuit 8',owner:'Advisor',summary:'Check classroom integration',date:'2026-11-01',dueDate:'2026-11-15',type:'Follow-up',status:'Planned',notes:''};
- const restore=async(data)=>{const input=d.querySelector('input[aria-label="Restore backup"]');Object.defineProperty(input,'files',{configurable:true,value:[{size:100,text:async()=>JSON.stringify(data)}]});input.dispatchEvent(new w.Event('change',{bubbles:true}));await tick();};
- await restore({version:2,reports:[],supportLogs:[support]});
- assert.equal(JSON.parse(w.localStorage.getItem('ecked-advisor-support-v1')).length,1);
- await restore({version:1,reports:[]});assert.equal(JSON.parse(w.localStorage.getItem('ecked-advisor-support-v1')).length,1);
- const reportsBefore=w.localStorage.getItem('wced-district-monitor-ai-v6'),supportBefore=w.localStorage.getItem('ecked-advisor-support-v1');
- await restore({version:2,reports:[],supportLogs:[{...support,status:'invalid'}]});
- assert.equal(w.localStorage.getItem('wced-district-monitor-ai-v6'),reportsBefore);assert.equal(w.localStorage.getItem('ecked-advisor-support-v1'),supportBefore);assert.match(d.body.textContent,/Import failed/);
- dom.window.close();
+test('equipment capture and management export survive the reporting redesign',async()=>{
+ const dom=await setup(),w=dom.window;await openSchool(w);click(w,'Equipment');await tick();click(w,'Capture equipment');await tick();change(w,input(w,'Equipment information source'),'ICT Champion reported');for(const [k,n]of Object.entries({total:20,working:18,faulty:1,awaitingRepair:1}))change(w,input(w,'Tablets '+k),String(n));change(w,input(w,'Smart classrooms installed'),'Yes');await tick();change(w,input(w,'Smart classrooms total'),'2');change(w,input(w,'Smart classrooms functional'),'1');await tick();click(w,'Save equipment snapshot');await tick();assert.equal(JSON.parse(w.localStorage.getItem(EQUIPMENT))[0].devices.tablets.total,20);
+ click(w,'Reports');await tick();click(w,'Management summary');await tick();change(w,input(w,'Advisor management commentary'),'Equipment findings for manager');await tick();const html=await blobText(w,'Download manager report');assert.match(html,/18 \/ 20 working/);assert.match(html,/Equipment findings for manager/);assert.doesNotMatch(html,/Outstanding follow-ups/);dom.window.close();
 });
-
-test('capture equipment, persist counts and smart classrooms, and include equipment in manager export',async()=>{
- const dom=await setup();const w=dom.window,d=w.document;
- click(w,'School profiles');await tick();click(w,'HEIDEDAL PRIM');await tick();click(w,'Equipment & infrastructure');await tick();assert.match(d.body.textContent,/Equipment not yet captured/);
- click(w,'Capture equipment');await tick();
- const input=label=>d.querySelector('[aria-label="'+label+'"]');
- change(w,input('Equipment information source'),'ICT Champion reported');
- for(const [k,n] of Object.entries({total:20,working:18,faulty:1,awaitingRepair:1}))change(w,input('Tablets '+k),String(n));
- change(w,input('Smart classrooms installed'),'Yes');await tick();change(w,input('Smart classrooms total'),'2');change(w,input('Smart classrooms functional'),'1');change(w,input('Smart classrooms usage'),'Limited use');await tick();
- click(w,'Save equipment snapshot');await tick();
- const records=JSON.parse(w.localStorage.getItem('ecked-school-equipment-v1'));assert.equal(records.length,1);assert.equal(records[0].devices.tablets.working,18);assert.equal(records[0].devices.laptops,null);assert.match(d.body.textContent,/1\/2 functional/);
- click(w,'Equipment register');await tick();assert.match(d.body.textContent,/1 schools with faulty/);
- click(w,'Management summary');await tick();let blob;w.URL.createObjectURL=b=>{blob=b;return 'blob:test';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=()=>{};click(w,'Download manager report');await tick();
- const text=await new Promise(resolve=>{const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.readAsText(blob);});assert.match(text,/Equipment and infrastructure/);assert.match(text,/18 \/ 20 working/);
- dom.window.close();
+test('training recommendations are recorded as advice without creating a visit schedule',async()=>{
+ const r=report({scores:{...scores(4),'teaching-3':1}}),dom=await setup({[REPORTS]:[r]}),w=dom.window;await openSchool(w);click(w,'Recommendations');await tick();click(w,'Record training recommendation');await tick();const logs=JSON.parse(w.localStorage.getItem(SUPPORT));assert.equal(logs.length,1);assert.equal(logs[0].dueDate,'');assert.equal(logs[0].training.attendance,'Not confirmed');assert.match(w.document.body.textContent,/Recorded recommendations/);dom.window.close();
 });
-test('training recommendation creates a linked support action with independent verification fields',async()=>{
- const scores=Object.fromEntries(['env-0','env-1','env-2','culture-0','culture-1','culture-2','culture-3','teaching-0','teaching-1','teaching-2','teaching-3','teaching-4'].map(k=>[k,k==='teaching-3'?1:4]));
- const dom=await setup(JSON.stringify([{id:'training-report',school:'HEIDEDAL PRIM',circuit:'Circuit 8',date:'2026-11-13',staff:'Principal',designation:'Principal',advisor:'Advisor',scores,notes:''}]));const w=dom.window,d=w.document;
- click(w,'School profiles');await tick();click(w,'HEIDEDAL PRIM');await tick();click(w,'Recommended training');await tick();assert.match(d.body.textContent,/Teacher Content Creation/);assert.match(d.body.textContent,/Schedule snapshot: 2026-11-13/);
- click(w,'Plan training support');await tick();
- const saved=JSON.parse(w.localStorage.getItem('ecked-advisor-support-v1'));assert.equal(saved.length,1);assert.equal(saved[0].training.attendance,'Not confirmed');
- change(w,d.querySelector('[aria-label="Training attendance"]'),'Confirmed');change(w,d.querySelector('[aria-label="Training classroom implementation"]'),'Observed');await tick();click(w,'Save support record');await tick();assert.equal(JSON.parse(w.localStorage.getItem('ecked-advisor-support-v1'))[0].training.implementation,'Observed');
- click(w,'My overview');await tick();assert.match(d.body.textContent,/School Monitoring Dashboard/);dom.window.close();
+test('backups include drafts and preserve old records; invalid restore leaves data intact',async()=>{
+ const dom=await setup({[REPORTS]:[report()]}),w=dom.window;await backups(w);const raw=await blobText(w,'Export backup'),backup=JSON.parse(raw);assert.equal(backup.version,4);assert.deepEqual(backup.drafts,[]);
+ const original=w.localStorage.getItem(REPORTS);await restore(w,{...backup,drafts:[{id:'bad'}]});assert.equal(w.localStorage.getItem(REPORTS),original);assert.match(w.document.body.textContent,/Import failed/);await restore(w,{version:1,reports:[]});assert.equal(JSON.parse(w.localStorage.getItem(REPORTS)).length,1);dom.window.close();
 });
-test('version 3 backups include equipment and legacy restore keeps existing equipment',async()=>{
- const equipment={id:'asset-old',school:'HEIDEDAL PRIM',circuit:'Circuit 8',verifiedDate:'2026-11-13',source:'ICT Champion reported',devices:{tablets:{total:10,working:10,faulty:0,awaitingRepair:0}},smart:{present:'No',total:0,functional:0,usage:'Not in use'}};
- const dom=await setup(undefined,undefined,[equipment]);const w=dom.window,d=w.document;let blob;w.URL.createObjectURL=b=>{blob=b;return 'blob:test';};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=()=>{};click(w,'Export backup');await tick();
- const text=await new Promise(resolve=>{const reader=new w.FileReader();reader.onload=()=>resolve(reader.result);reader.readAsText(blob);});const backup=JSON.parse(text);assert.equal(backup.version,3);assert.equal(backup.equipmentRecords.length,1);
- const restore=async(data)=>{const input=d.querySelector('input[aria-label="Restore backup"]');Object.defineProperty(input,'files',{configurable:true,value:[{size:100,text:async()=>JSON.stringify(data)}]});input.dispatchEvent(new w.Event('change',{bubbles:true}));await tick();};
- await restore({version:2,reports:[],supportLogs:[]});assert.equal(JSON.parse(w.localStorage.getItem('ecked-school-equipment-v1')).length,1);
- await restore({...backup,equipmentRecords:[{...equipment,id:'asset-new',verifiedDate:'2026-11-12'}]});assert.equal(JSON.parse(w.localStorage.getItem('ecked-school-equipment-v1')).length,2);
- dom.window.close();
-});
+test('corrupt stored reports remain untouched and show a recovery message',async()=>{const dom=await setup({[REPORTS]:'invalid JSON'});assert.match(dom.window.document.body.textContent,/Stored reports could not be read/);assert.equal(dom.window.localStorage.getItem(REPORTS),'invalid JSON');dom.window.close();});

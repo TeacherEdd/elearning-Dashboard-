@@ -1,8 +1,12 @@
+import AppShell from './AppShell.jsx';
+import CaptureFindings from './CaptureFindings.jsx';
+import {DRAFTS_KEY,validateDrafts,writeCollections} from './drafts.js';
+import districtLogo from './assets/ecked-logo.png';
 import {EQUIPMENT_KEY,validateEquipment} from './equipment.js';
 import AdvisorDashboard from './AdvisorDashboard.jsx';
-import { SUPPORT_KEY, validateSupportLogs } from './advisor.js';
+import { SUPPORT_KEY, validateSupportLogs, validDate } from './advisor.js';
 import './styles.css';
-import { calculateReadiness, validateReports, mergeReports, csvExport } from './core.js';
+import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExport } from './core.js';
 
     import React, { useEffect, useMemo, useState } from 'react';
     import { createRoot } from 'react-dom/client';
@@ -40,9 +44,9 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
         title: 'Enabling Environment',
         icon: ShieldCheck,
         items: [
-          { name: 'Connectivity Quality', desc: 'Reliability and speed of internet access.' },
-          { name: 'Physical Security', desc: 'Security of ICT assets and storage.' },
-          { name: 'Technical Maintenance', desc: 'Device upkeep and repairs.' },
+          { key: 'env-0', name: 'Connectivity Quality', desc: 'Reliability and speed of internet access.' },
+          { key: 'env-1', name: 'Physical Security', desc: 'Security of ICT assets and storage.' },
+          { key: 'env-2', name: 'Technical Maintenance', desc: 'Device upkeep and repairs.' },
         ],
       },
       {
@@ -50,10 +54,10 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
         title: 'e-Culture & Change Management',
         icon: Users,
         items: [
-          { name: 'ICT Policy & Integration', desc: 'Use of a practical digital plan.' },
-          { name: 'Leadership Drive', desc: 'SMT involvement in digital transformation.' },
-          { name: 'Formal Training Intake', desc: 'Staff participation in formal ICT and e-learning training opportunities.' },
-          { name: 'Informal Support Culture', desc: 'Evidence of peer-to-peer support, mentoring and teacher collaboration around ICT.' },
+          { key: 'culture-0', name: 'ICT Policy & Integration', desc: 'Use of a practical digital plan.' },
+          { key: 'culture-1', name: 'Leadership Drive', desc: 'SMT involvement in digital transformation.' },
+          { key: 'culture-2', name: 'Formal Training Intake', desc: 'Staff participation in formal ICT and e-learning training opportunities.' },
+          { key: 'culture-3', name: 'Informal Support Culture', desc: 'Evidence of peer-to-peer support, mentoring and teacher collaboration around ICT.' },
         ],
       },
       {
@@ -61,14 +65,14 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
         title: 'e-Teaching & Training',
         icon: BookOpen,
         items: [
-          { name: 'ePortal/Teletuks Use', desc: 'Use of digital curriculum resources.' },
-          { name: 'LMS Usage at School', desc: 'Use of school-based learning management systems or digital platforms to support teaching and learning.' },
-          { name: 'Pedagogical Shift', desc: 'Evidence that teaching practices are changing meaningfully through technology.' },
-          { name: 'Teacher Content Creation', desc: 'Teachers creating their own digital teaching and learning resources.' },
-          { name: 'Learner Digital Literacy', desc: 'Learners are able to use digital tools confidently and appropriately for learning.' },
+          { key: 'teaching-0', name: 'ePortal/Teletuks Use', desc: 'Use of digital curriculum resources.' },
+          { key: 'teaching-2', name: 'Pedagogical Shift', desc: 'Evidence that teaching practices are changing meaningfully through technology.' },
+          { key: 'teaching-3', name: 'Teacher Content Creation', desc: 'Teachers creating their own digital teaching and learning resources.' },
+          { key: 'teaching-4', name: 'Learner Digital Literacy', desc: 'Learners are able to use digital tools confidently and appropriately for learning.' },
         ],
       },
     ];
+
 
     const maturityLevels = [
       { label: 'EMERGING', color: 'bg-red-500', text: 'text-red-700', light: 'bg-red-50', border: 'border-red-200' },
@@ -86,7 +90,6 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
       'Formal Training Intake': { problem: 'Teachers are not yet accessing enough formal ICT and e-learning training opportunities.', action: 'Create a simple training participation plan and monitor attendance each term.', advisor: 'Share relevant formal training opportunities and support uptake.', school: 'Track teacher attendance and encourage wider participation in formal development.' },
       'Informal Support Culture': { problem: 'Teachers are not consistently supporting one another through peer mentoring and practical ICT sharing.', action: 'Build simple peer-support routines such as demonstrations, staff sharing slots and teacher buddy systems.', advisor: 'Model low-pressure informal support practices that can be sustained internally.', school: 'Create regular opportunities for teachers to share ideas and help one another with digital teaching practices.' },
       'ePortal/Teletuks Use': { problem: 'Digital platforms are not yet being used consistently to support learning.', action: 'Pilot stronger use in two subjects with weekly targets.', advisor: 'Provide hands-on support with lesson integration.', school: 'Track teacher usage and celebrate small wins.' },
-      'LMS Usage at School': { problem: 'The school is not yet using a learning management system consistently to support teaching, communication and learner access.', action: 'Identify one main platform and build a simple whole-school usage routine.', advisor: 'Support the school with practical LMS onboarding and use cases.', school: 'Encourage staff to use the LMS for class resources, communication and structured learning tasks.' },
       'Pedagogical Shift': { problem: 'Technology is not yet changing teaching practice in a meaningful and learner-centred way.', action: 'Support teachers to move from substitution to more interactive and transformative use of ICT.', advisor: 'Model practical examples of stronger pedagogy through technology.', school: 'Encourage classroom strategies where learners engage, create and collaborate using digital tools.' },
       'Teacher Content Creation': { problem: 'Teachers are relying mostly on existing material instead of creating contextual digital resources.', action: 'Train staff to create simple presentations, quizzes and CAPS-linked materials.', advisor: 'Facilitate practical content-creation workshops.', school: 'Build a shared folder of teacher-created content.' },
       'Learner Digital Literacy': { problem: 'Learners are not yet confident and independent in using digital tools for learning.', action: 'Introduce structured opportunities for learners to practise digital skills during normal teaching.', advisor: 'Support teachers with strategies to integrate learner digital skill development into lessons.', school: 'Create regular learner activities that build navigation, responsible use and digital confidence.' },
@@ -95,10 +98,10 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
     function buildDetailedAnalysis(scoreMap, readinessLabel, schoolName) {
       const entries = monitoringSections.flatMap((section) =>
         section.items.map((item, idx) => ({
-          key: `${section.id}-${idx}`,
+          key: item.key,
           name: item.name,
           section: section.title,
-          score: scoreMap[`${section.id}-${idx}`] ?? null,
+          score: scoreMap[item.key] ?? null,
           ...indicatorGuidance[item.name],
         }))
       ).filter((item) => item.score !== null);
@@ -113,7 +116,7 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
           const strategicWeight =
             item.name === 'Leadership Drive' || item.name === 'Connectivity Quality' || item.name === 'Pedagogical Shift'
               ? 1.35
-              : item.name === 'LMS Usage at School' || item.name === 'Teacher Content Creation' || item.name === 'Learner Digital Literacy'
+              : item.name === 'Teacher Content Creation' || item.name === 'Learner Digital Literacy'
                 ? 1.2
                 : 1;
           return {
@@ -156,7 +159,7 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
       const categoryBreakdown = monitoringSections.map((section) => {
         const sectionEntries = section.items.map((item, idx) => ({
           name: item.name,
-          score: scoreMap[`${section.id}-${idx}`] ?? 0,
+          score: scoreMap[item.key] ?? 0,
         }));
         const sectionAverage = sectionEntries.length 
             ? sectionEntries.reduce((sum, item) => sum + item.score, 0) / sectionEntries.length 
@@ -213,27 +216,7 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
       };
     }
 
-    function generateInterventionPlan(analysis) {
-      const main = analysis?.weak_areas?.[0];
-      if (!main) {
-        return [
-          'Week 1: Monitor strong practices already in place.',
-          'Week 2: Share effective classroom examples with staff.',
-          'Week 3: Track consistency across departments.',
-          'Week 4: Provide light-touch coaching where needed.',
-          'Week 5: Review evidence of sustained implementation.',
-          'Week 6: Consolidate strengths into whole-school routines.',
-        ];
-      }
-      return [
-        `Week 1: Conduct focused support on ${main.name}.`,
-        `Week 2: Support teachers or leaders in applying improvements linked to ${main.name}.`,
-        'Week 3: Monitor implementation in practice and gather evidence.',
-        'Week 4: Provide feedback, coaching and corrective support.',
-        'Week 5: Strengthen consistency across staff and systems.',
-        'Week 6: Review progress and refine the school improvement strategy.',
-      ];
-    }
+    function generateInterventionPlan(analysis) { return analysis?.priority_actions || []; }
 
     function PrintStyles() {
       return (
@@ -333,11 +316,11 @@ import { calculateReadiness, validateReports, mergeReports, csvExport } from './
 
         const indicatorsText = monitoringSections.map(sec => {
             return `${sec.title.toUpperCase()}\n` + 
-            sec.items.map((item, idx) => `  - ${item.name}: ${report.scores[`${sec.id}-${idx}`] || 0}/5`).join('\n');
+            sec.items.map((item, idx) => `  - ${item.name}: ${report.scores[item.key] || 0}/5`).join('\n');
         }).join('\n\n');
 
         return `WESTERN CAPE EDUCATION DEPARTMENT (WCED)
-E-LEARNING SUPPORT AUDIT MEMORANDUM
+E-LEARNING SCHOOL FINDINGS REPORT
 --------------------------------------------------------------------------------
 
 TO: The Principal, ${report.school}
@@ -351,6 +334,11 @@ INTERVIEWEE: ${report.staff} (${report.designation})
 --------------------------------------------------------------------------------
 Score: ${report.avg} / 5.0
 Maturity Level: ${report.readiness}
+Information source: ${report.informationSource || 'Not specified'}
+Scoring basis: 11 indicators; LMS excluded
+
+RECORDED FINDINGS AND EVIDENCE
+${report.notes || 'No additional observations recorded.'}
 
 --------------------------------------------------------------------------------
 2. DETAILED INDICATOR SCORES
@@ -382,10 +370,10 @@ ${ai?.strengths?.length > 0
       : 'The school is currently building foundational practices.'}
 
 --------------------------------------------------------------------------------
-7. RECOMMENDED 6-WEEK INTERVENTION PLAN
+7. RECOMMENDATIONS LINKED TO FINDINGS
 --------------------------------------------------------------------------------
 ${report.interventionPlan?.length > 0 
-      ? report.interventionPlan.map((step, i) => `Week ${i + 1}: ${step.replace(/^Week \d+: /, '')}`).join('\n')
+      ? report.interventionPlan.map((step, i) => `Recommendation ${i + 1}: ${step.replace(/^Week \d+: /, '')}`).join('\n')
       : 'Monitor progress and maintain current standard.'}
 
 --------------------------------------------------------------------------------
@@ -410,7 +398,7 @@ Innovation | Accountability | Care | Responsiveness`;
             {/* Screen Header (Hidden on Print) */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 to-slate-800 p-6 md:p-8 text-white sticky top-0 z-10 no-print">
               <div>
-                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">Support Audit Report</div>
+                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">School Findings Report</div>
                 <h3 className="text-2xl md:text-3xl font-black">{report.school}</h3>
                 <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-300 flex items-center gap-2">
                   <MapPin size={14}/> {report.circuit} <span className="text-slate-500">|</span> <Calendar size={14}/> {report.date}
@@ -446,8 +434,8 @@ Innovation | Accountability | Care | Responsiveness`;
                 
                 {/* --- Formal WCED Letterhead (ONLY VISIBLE ON PRINT) --- */}
                 <div className="hidden print:block wced-header">
-                   <h1>Western Cape Education Department</h1>
-                   <h2>E-Learning Support Audit Memorandum</h2>
+                   <img src={districtLogo} alt="Eden and Central Karoo Education District" style={{width:92,height:92,objectFit:'contain',float:'right'}}/><h1>Western Cape Education Department</h1>
+                   <h2>E-Learning School Findings Report</h2>
                 </div>
                 
                 {/* Print Meta Data & Score */}
@@ -463,7 +451,7 @@ Innovation | Accountability | Care | Responsiveness`;
                        <tr><td className="label">TO:</td><td>The Principal, <span className="font-bold text-slate-900">{report.school}</span></td></tr>
                        <tr><td className="label">FROM:</td><td>{report.advisor}, e-Learning Advisor ({report.circuit})</td></tr>
                        <tr><td className="label">DATE:</td><td>{report.date}</td></tr>
-                       <tr><td className="label">INTERVIEWEE:</td><td>{report.staff} ({report.designation})</td></tr>
+                       <tr><td className="label">INTERVIEWEE:</td><td>{report.staff} ({report.designation})</td></tr><tr><td className="label">SOURCE:</td><td>{report.informationSource||'Not specified'}</td></tr>
                      </tbody>
                    </table>
                 </div>
@@ -483,14 +471,15 @@ Innovation | Accountability | Care | Responsiveness`;
                     <div className="mt-1 text-sm font-bold text-slate-500">{report.designation || 'No designation'}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6">
-                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Audit Completion</div>
-                    <div className="mt-2 text-xl font-black text-slate-900">{Object.keys(report.scores || {}).length}/{totalIndicators} Indicators</div>
-                    <div className="mt-1 text-sm font-bold text-slate-500">Evaluated on site</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Report Completion</div>
+                    <div className="mt-2 text-xl font-black text-slate-900">{INDICATORS.filter(key=>Number.isInteger(report.scores?.[key])).length}/{totalIndicators} Indicators</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Source: {report.informationSource || 'Not specified'}</div>
                   </div>
                 </div>
 
                 {/* Report Content Blocks */}
                 
+                <div className="rounded-2xl border border-slate-200 p-6 mb-6"><h3 className="section-title">Recorded findings and evidence</h3><p className="text-sm text-slate-600 mb-3">Information source: {report.informationSource||'Not specified'}</p><p className="whitespace-pre-wrap text-sm leading-relaxed">{report.notes||'No additional observations recorded.'}</p></div>
                 {/* Executive Summary */}
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 mb-6 print:border print:p-6 print:mb-6">
                   <h3 className="section-title print:block hidden mt-0">1. Executive Summary</h3>
@@ -511,7 +500,7 @@ Innovation | Accountability | Care | Responsiveness`;
                              <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-3 print:text-slate-600 print:mb-2">{section.title}</div>
                              <ul className="space-y-2 print:space-y-1">
                                  {section.items.map((item, idx) => {
-                                     const score = report.scores[`${section.id}-${idx}`] || 0;
+                                     const score = report.scores[item.key] || 0;
                                      return (
                                          <li key={item.name} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1.5 last:border-0 last:pb-0 print:border-slate-200 print:pb-1">
                                              <span className="text-[11px] font-semibold text-slate-600 leading-tight print:text-[10pt] print:text-slate-800">{item.name}</span>
@@ -591,15 +580,15 @@ Innovation | Accountability | Care | Responsiveness`;
 
                 {/* Intervention Plan */}
                 <div className="mt-6 print:mt-8">
-                  <h3 className="section-title print:block hidden">6. Recommended 6-Week Intervention Plan</h3>
+                  <h3 className="section-title print:block hidden">6. Recommendations linked to findings</h3>
                   <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-6">
-                    <h5 className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 no-print">Recommended 6-Week Intervention Plan</h5>
+                    <h5 className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 no-print">Recommendations linked to findings</h5>
                     {report.interventionPlan?.length > 0 ? (
                        <ul className="space-y-3 mt-2 print:space-y-3">
                          {report.interventionPlan.map((step, idx) => (
                            <li key={idx} className="text-sm print:text-[11pt] font-medium text-blue-900 flex items-start gap-3">
                              <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-blue-200 text-blue-700 text-xs font-black no-print">{idx + 1}</span> 
-                             <span className="hidden print:inline font-black text-blue-800">Week {idx + 1}:</span>
+                             <span className="hidden print:inline font-black text-blue-800">Recommendation {idx + 1}:</span>
                              <span className="pt-0.5 print:pt-0 leading-relaxed">{step.replace(/^Week \d+: /, '')}</span>
                            </li>
                          ))}
@@ -617,7 +606,7 @@ Innovation | Accountability | Care | Responsiveness`;
     }
 
     function App() {
-      const [view, setView] = useState('dashboard');
+      const [view, setView] = useState('overview');
       const [selectedCircuit, setSelectedCircuit] = useState('');
       const [selectedSchool, setSelectedSchool] = useState('');
       const [scores, setScores] = useState({});
@@ -634,6 +623,10 @@ Innovation | Accountability | Care | Responsiveness`;
       const [designation, setDesignation] = useState('');
       const [selectedAdvisor, setSelectedAdvisor] = useState('E. van der Berg');
       const [auditNotes, setAuditNotes] = useState('');
+      const [informationSource,setInformationSource] = useState('Not specified');
+      const [draftRecords,setDraftRecords] = useState([]);
+      const [draftEditingId,setDraftEditingId] = useState(null);
+      const [draftError,setDraftError] = useState('');
       const [interventionPlan, setInterventionPlan] = useState([]);
       const [equipmentRecords,setEquipmentRecords] = useState([]);
       const [equipmentError,setEquipmentError] = useState('');
@@ -680,6 +673,8 @@ Innovation | Accountability | Care | Responsiveness`;
         try {const raw=localStorage.getItem(EQUIPMENT_KEY);if(raw)setEquipmentRecords(validateEquipment(JSON.parse(raw)));}
         catch(error){setEquipmentError('Stored equipment records could not be read. Existing data has not been overwritten. Restore a valid backup.');}
       }, []);
+      useEffect(()=>{try{const raw=localStorage.getItem(DRAFTS_KEY);if(raw)setDraftRecords(validateDrafts(JSON.parse(raw)));}catch(error){setDraftError('Stored drafts could not be read. They have not been overwritten. Restore a valid backup.');}},[]);
+      const persistDrafts=records=>{try{const valid=validateDrafts(records);if(draftError.startsWith('Stored drafts')&&!window.confirm('Saving replaces unreadable draft storage. Continue only with a backup.'))return false;localStorage.setItem(DRAFTS_KEY,JSON.stringify(valid));setDraftRecords(valid);setDraftError('');return true;}catch(error){setDraftError('Draft could not be saved. Keep this page open. '+error.message);return false;}};
       const persistEquipment = records => {
         try {
           const validated=validateEquipment(records);
@@ -706,18 +701,19 @@ Innovation | Accountability | Care | Responsiveness`;
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
       const exportBackup = () => download('elearning-backup-' + todayStr + '.json',
-        JSON.stringify({version: 3, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs, equipmentRecords}, null, 2), 'application/json');
+        JSON.stringify({version: 4, exportedAt: new Date().toISOString(), reports: savedReports, supportLogs, equipmentRecords, drafts:draftRecords}, null, 2), 'application/json');
       const importBackup = async (event) => {
         const file = event.target.files[0]; event.target.value = '';
         if (!file) return;
         try {
           if (file.size > 10 * 1024 * 1024) throw new Error('Backup exceeds 10 MB.');
           const parsed = JSON.parse(await file.text());
-          if (!Array.isArray(parsed) && ![1,2,3].includes(parsed.version)) throw new Error('Unsupported backup version.');
+          if (!Array.isArray(parsed) && ![1,2,3,4].includes(parsed.version)) throw new Error('Unsupported backup version.');
           const incoming = validateReports(Array.isArray(parsed) ? parsed : parsed.reports);
           const incomingSupport = validateSupportLogs(parsed.version >= 2 ? parsed.supportLogs : []);
-          const incomingEquipment=validateEquipment(parsed.version===3?parsed.equipmentRecords:[]);
-          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records and ' + incomingEquipment.length + ' equipment snapshots? Matching IDs will be replaced. Export a backup first if needed.')) return;
+          const incomingEquipment=validateEquipment(parsed.version>=3?parsed.equipmentRecords:[]);
+          const incomingDrafts=validateDrafts(parsed.version===4?parsed.drafts:[]);
+          if (!window.confirm('Merge ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records and ' + incomingEquipment.length + ' equipment snapshots and ' + incomingDrafts.length + ' drafts? Matching IDs will be replaced. Export a backup first if needed.')) return;
           const nextReports = mergeReports(savedReports, incoming).map(report => {
             const ready = calculateReadiness(report.scores);
             const analysis = buildDetailedAnalysis(report.scores, ready.label, report.school);
@@ -725,21 +721,10 @@ Innovation | Accountability | Care | Responsiveness`;
           });
           const nextSupport = mergeReports(supportLogs, incomingSupport);
           const nextEquipment = [...new Map([...equipmentRecords,...incomingEquipment].map(r=>[r.id,r])).values()];
-          const oldReports = localStorage.getItem(STORAGE_KEY), oldSupport = localStorage.getItem(SUPPORT_KEY),oldEquipment=localStorage.getItem(EQUIPMENT_KEY);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(nextReports));
-            localStorage.setItem(SUPPORT_KEY, JSON.stringify(nextSupport));
-            localStorage.setItem(EQUIPMENT_KEY, JSON.stringify(nextEquipment));
-          } catch(error) {
-            try {
-              if(oldReports===null) localStorage.removeItem(STORAGE_KEY); else localStorage.setItem(STORAGE_KEY, oldReports);
-              if(oldSupport===null) localStorage.removeItem(SUPPORT_KEY); else localStorage.setItem(SUPPORT_KEY, oldSupport);
-              if(oldEquipment===null) localStorage.removeItem(EQUIPMENT_KEY); else localStorage.setItem(EQUIPMENT_KEY, oldEquipment);
-            } catch(rollbackError) {setStorageError('Restore failed and storage could not be rolled back. Export a backup of the current in-memory records before closing.');}
-            throw error;
-          }
-          setSavedReports(nextReports);setSupportLogs(nextSupport);setEquipmentRecords(nextEquipment);setStorageError('');setSupportError('');setEquipmentError('');
-          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records, ' + incomingEquipment.length + ' equipment snapshots.');
+          const nextDrafts=[...new Map([...draftRecords,...incomingDrafts].map(d=>[d.id,d])).values()];
+          writeCollections(localStorage,[[STORAGE_KEY,nextReports],[SUPPORT_KEY,nextSupport],[EQUIPMENT_KEY,nextEquipment],[DRAFTS_KEY,nextDrafts]]);
+          setSavedReports(nextReports);setSupportLogs(nextSupport);setEquipmentRecords(nextEquipment);setDraftRecords(nextDrafts);setStorageError('');setSupportError('');setEquipmentError('');setDraftError('');
+          setNotice('Backup restored: ' + incoming.length + ' assessments and ' + incomingSupport.length + ' support records, ' + incomingEquipment.length + ' equipment snapshots, ' + incomingDrafts.length + ' drafts.');
         } catch(error) { setNotice('Import failed: ' + error.message); }
       };
 
@@ -754,9 +739,9 @@ Innovation | Accountability | Care | Responsiveness`;
       );
 
       const currentReadiness = calculateReadiness(scores);
-      const completedCount = Object.keys(scores).length;
+      const completedCount = INDICATORS.filter(k=>Number.isInteger(scores[k])&&scores[k]>=1&&scores[k]<=5).length;
       const formComplete = Boolean(
-        selectedSchool && monitoringDate && selectedAdvisor.trim() && personSpeakingTo.trim() && designation.trim() && completedCount === totalIndicators
+        selectedSchool && validDate(monitoringDate) && monitoringDate<=todayStr && selectedAdvisor.trim() && personSpeakingTo.trim() && designation.trim() && completedCount === totalIndicators
       );
 
       const resetForm = () => {
@@ -768,6 +753,8 @@ Innovation | Accountability | Care | Responsiveness`;
         setDesignation('');
         setMonitoringDate(todayStr);
         setAuditNotes('');
+        setInformationSource('Not specified');
+        setDraftEditingId(null);
         setInterventionPlan([]);
         setEditingReportId(null);
       };
@@ -782,9 +769,11 @@ Innovation | Accountability | Care | Responsiveness`;
         setSelectedAdvisor(report.advisor || 'E. van der Berg');
         setMonitoringDate(report.date || todayStr);
         setAuditNotes(report.notes || '');
+        setInformationSource(report.informationSource||'Not specified');
+        setDraftEditingId(null);
         setInterventionPlan(report.interventionPlan || []);
         setEditingReportId(report.id);
-        setView('form');
+        setView('capture');
         setActiveReport(null);
       };
 
@@ -804,6 +793,7 @@ Innovation | Accountability | Care | Responsiveness`;
 
       const saveReport = () => {
         if (!formComplete) return;
+        if(storageError.startsWith('Stored reports')||draftError.startsWith('Stored drafts')){setNotice('Restore a valid backup before finalising, so unreadable records are not replaced.');return;}
 
         setIsSaving(true);
         const localCalc = buildDetailedAnalysis(scores, currentReadiness.label, selectedSchool);
@@ -825,8 +815,9 @@ Innovation | Accountability | Care | Responsiveness`;
           advisor: selectedAdvisor,
           staff: personSpeakingTo,
           designation,
-          scores: { ...scores },
+          scores: { ...(savedReports.find(r=>r.id===editingReportId)?.scores||{}), ...scores },
           notes: auditNotes,
+          informationSource,
           aiAnalysis: finalAnalysis,
           interventionPlan: generatedIntervention
         };
@@ -835,307 +826,26 @@ Innovation | Accountability | Care | Responsiveness`;
           ? savedReports.map(r => r.id === editingReportId ? reportPayload : r)
           : [reportPayload, ...savedReports];
 
-        if (!persistReports(updatedReports)) { setIsSaving(false); return; }
+        try {const nextDrafts=draftRecords.filter(d=>d.id!==draftEditingId);writeCollections(localStorage,[[STORAGE_KEY,updatedReports],[DRAFTS_KEY,nextDrafts]]);setSavedReports(updatedReports);setDraftRecords(nextDrafts);setStorageError('');setDraftError('');setNotice('Final report saved on this device.');}
+        catch(error){setStorageError(error.message);setIsSaving(false);return;}
 
         setTimeout(() => {
           setIsSaving(false);
           resetForm();
-          setView('dashboard');
+          setView('reports');
         }, 500);
       };
 
-      return (
-        <>
-          <PrintStyles />
-          {/* Hide the main app wrapper when printing to guarantee zero dashboard bleed */}
-          <div id="app-main-wrapper" className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 print:hidden">
-            
-            {/* Navigation Bar */}
-            <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between items-center h-16">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-2.5 rounded-xl shadow-sm">
-                      <BrainCircuit size={24} />
-                    </div>
-                    <div>
-                      <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none">Elearning Monitor</h1>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Eden & Central Karoo</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => { resetForm(); setView('dashboard'); }}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition shadow-sm ${view === 'dashboard' ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      <LayoutDashboard size={18} />
-                      <span className="hidden sm:inline">Dashboard</span>
-                    </button>
-                    <button
-                      onClick={() => { resetForm(); setView('form'); }}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition shadow-sm ${view === 'form' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100'}`}
-                    >
-                      <PlusCircle size={18} />
-                      <span className="hidden sm:inline">New Audit</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </header>
-
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <aside className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-3">
-                <p><strong>Device storage:</strong> Assessments, equipment and support records stay in this browser. Export a backup to transfer them or protect against data loss. Your manager does not have live access; use the Management summary to export a dated report. Recommendations use built-in rules; no AI service is connected.</p>
-                <div className="flex flex-wrap gap-3">
-                  <button onClick={exportBackup} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export backup</button>
-                  <label className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold cursor-pointer">Restore backup<input aria-label="Restore backup" type="file" accept=".json,application/json" className="hidden" onChange={importBackup}/></label>
-                  <button onClick={() => download('elearning-reports-' + todayStr + '.csv', csvExport(savedReports), 'text/csv;charset=utf-8')} className="rounded-lg bg-white border border-blue-200 px-4 py-2 font-bold">Export assessment CSV</button>
-                </div>
-              </aside>
-              {equipmentError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{equipmentError}</p>}
-              {supportError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{supportError}</p>}
-              {storageError && <p role="alert" className="mb-4 rounded-xl bg-red-50 border border-red-300 p-4 text-red-800">{storageError}</p>}
-              {notice && <p role="status" className="mb-4 rounded-xl bg-slate-100 p-4">{notice}</p>}
-
-              
-              {/* VIEW: FORM */}
-              {view === 'form' && (
-                <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  
-                  <div className="text-center space-y-2 mb-8">
-                    <h2 className="text-3xl font-black text-slate-900">
-                      {editingReportId ? 'Edit Support Audit' : 'New School Support Audit'}
-                    </h2>
-                    <p className="text-slate-500 font-medium">Evaluate e-Learning integration and generate recommendations from your indicator scores.</p>
-                  </div>
-
-                  {/* School Info Section */}
-                  <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-slate-200 space-y-6">
-                    <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-4">
-                      <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><School size={20} /></div>
-                      <h3 className="text-lg font-black uppercase tracking-widest text-slate-800">School Details</h3>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Education Circuit</label>
-                        <select
-                          value={selectedCircuit}
-                          onChange={(e) => { setSelectedCircuit(e.target.value); setSelectedSchool(''); }}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition"
-                        >
-                          <option value="">Select Circuit...</option>
-                          {Object.keys(schoolDatabase).map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">School Name</label>
-                        <select
-                          value={selectedSchool}
-                          onChange={(e) => setSelectedSchool(e.target.value)}
-                          disabled={!selectedCircuit}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition disabled:opacity-50"
-                        >
-                          <option value="">Select School...</option>
-                          {filteredSchools.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Monitoring Date</label>
-                        <div className="relative">
-                          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                          <input
-                            type="date"
-                            value={monitoringDate}
-                            onChange={(e) => setMonitoringDate(e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 pl-11 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">e-Learning Advisor</label>
-                        <div className="relative">
-                          <UserCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                          <input
-                            type="text"
-                            value={selectedAdvisor}
-                            onChange={(e) => setSelectedAdvisor(e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 pl-11 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition"
-                            placeholder="Advisor Name"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Staff Interviewed</label>
-                        <input
-                          type="text"
-                          value={personSpeakingTo}
-                          onChange={(e) => setPersonSpeakingTo(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition"
-                          placeholder="e.g. Mr. S. Jacobs"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Designation / Role</label>
-                        <input
-                          type="text"
-                          value={designation}
-                          onChange={(e) => setDesignation(e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition"
-                          placeholder="e.g. ICT Coordinator"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Assessment Indicators */}
-                  <div className="space-y-6">
-                    {monitoringSections.map((section) => (
-                      <div key={section.id} className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-slate-200 space-y-6">
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                          <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><section.icon size={20} /></div>
-                          <h3 className="text-lg font-black uppercase tracking-widest text-slate-800">{section.title}</h3>
-                        </div>
-
-                        <div className="space-y-8">
-                          {section.items.map((item, idx) => {
-                            const key = `${section.id}-${idx}`;
-                            return (
-                              <div key={key} className="space-y-3">
-                                <div>
-                                  <h4 className="text-sm font-black text-slate-800">{item.name}</h4>
-                                  <p className="text-xs font-medium text-slate-500 mt-1">{item.desc}</p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  {[1, 2, 3, 4, 5].map((val) => (
-                                    <button
-                                      key={val}
-                                      onClick={() => setScores(prev => ({ ...prev, [key]: val }))}
-                                      className={`flex-1 min-w-[40px] md:min-w-[60px] py-3 px-2 rounded-xl text-xs font-bold transition-all border
-                                        ${scores[key] === val 
-                                          ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-[1.02]' 
-                                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:border-slate-300'}`}
-                                      title={ratingScale[val]}
-                                    >
-                                      {val}
-                                    </button>
-                                  ))}
-                                </div>
-                                {scores[key] && (
-                                  <div className="text-[10px] font-bold text-blue-600 bg-blue-50 inline-block px-2.5 py-1 rounded-md border border-blue-100">
-                                    Selected: {ratingScale[scores[key]]}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Additional Notes */}
-                  <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-slate-200">
-                    <label className="flex items-center gap-3 text-lg font-black uppercase tracking-widest text-slate-800 border-b border-slate-100 pb-4 mb-4">
-                      <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><FileText size={20} /></div>
-                      General Notes
-                    </label>
-                    <textarea
-                      value={auditNotes}
-                      onChange={(e) => setAuditNotes(e.target.value)}
-                      className="w-full h-32 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 transition resize-none"
-                      placeholder="Any additional observations about the school's e-learning context..."
-                    ></textarea>
-                  </div>
-
-                  {/* Progress & Actions */}
-                  <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 md:p-8 rounded-[2rem] shadow-xl text-white space-y-6 mt-8 border border-slate-700">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                      <div className="text-center md:text-left">
-                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Readiness Score</div>
-                        <div className="text-3xl font-black flex items-baseline gap-2">
-                          {currentReadiness.score} <span className="text-lg text-slate-400 font-bold">/ 5.0</span>
-                        </div>
-                        <div className={`mt-1 text-[11px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded inline-block ${
-                          currentReadiness.label === 'EMERGING' ? 'bg-red-500/20 text-red-300' :
-                          currentReadiness.label === 'ESTABLISHING' ? 'bg-orange-500/20 text-orange-300' :
-                          currentReadiness.label === 'INTEGRATED' ? 'bg-blue-500/20 text-blue-300' :
-                          currentReadiness.label === 'TRANSFORMATIVE' ? 'bg-green-500/20 text-green-300' : 'bg-slate-700 text-slate-400'
-                        }`}>
-                          {currentReadiness.label}
-                        </div>
-                      </div>
-
-                      <div className="text-center md:text-right bg-white/5 p-4 rounded-xl border border-white/10">
-                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Completion</div>
-                         <div className="text-xl font-bold">{completedCount} <span className="text-sm text-slate-500">/ {totalIndicators}</span></div>
-                      </div>
-                    </div>
-
-                    {aiAnalysis && (
-                      <div className="bg-white rounded-2xl p-6 md:p-8 space-y-6 text-slate-800 shadow-inner mt-6 border border-slate-200 animate-in fade-in zoom-in duration-300">
-                        <div className="border-b border-slate-200 pb-4 mb-4">
-                          <h4 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                            <Sparkles className="text-blue-600" size={20} /> Report Preview
-                          </h4>
-                          <p className="text-sm text-slate-500 mt-1">Review these rules-based recommendations before saving on this device.</p>
-                        </div>
-                        
-                        <div>
-                          <h5 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Executive Summary</h5>
-                          <p className="text-sm font-medium leading-relaxed">{aiAnalysis.executive_summary}</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div>
-                             <h5 className="text-[11px] font-black uppercase tracking-widest text-red-500 mb-2 flex items-center gap-1"><AlertTriangle size={14}/> Primary Challenge</h5>
-                             <p className="text-sm font-medium leading-relaxed">{aiAnalysis.main_problem}</p>
-                          </div>
-                          <div>
-                             <h5 className="text-[11px] font-black uppercase tracking-widest text-green-600 mb-2 flex items-center gap-1"><Award size={14}/> Key Strength</h5>
-                             <p className="text-sm font-medium leading-relaxed">{aiAnalysis.strengths[0]?.name || "Establishing foundational practices."}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-white/10">
-                      <button
-                        onClick={generateAIAnalysis}
-                        disabled={isAnalyzing || completedCount !== totalIndicators}
-                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:border-slate-700 text-white font-bold py-4 px-6 rounded-xl transition shadow-md border border-indigo-500 w-full"
-                      >
-                        {isAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
-                        {isAnalyzing ? 'Analyzing Data...' : '✨ Generate Detailed Report'}
-                      </button>
-                      <button
-                        onClick={saveReport}
-                        disabled={isSaving || !formComplete}
-                        className="flex items-center justify-center gap-2 bg-white hover:bg-slate-100 disabled:bg-slate-800 disabled:text-slate-500 disabled:border-slate-700 text-slate-900 font-bold py-4 px-6 rounded-xl transition shadow-md w-full"
-                      >
-                        {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                        {isSaving ? 'Saving...' : 'Save Audit to District'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {view === 'dashboard' && <AdvisorDashboard database={schoolDatabase} reports={savedReports} logs={supportLogs} equipment={equipmentRecords} onSaveEquipment={persistEquipment} onSaveLogs={persistSupport} today={todayStr} download={download}
-                onNewAudit={(profile) => {resetForm(); if(profile){setSelectedCircuit(profile.circuit);setSelectedSchool(profile.school);} setView('form');}}
-                onViewReport={setActiveReport} onEditReport={loadReportIntoForm} onDeleteReport={deleteReport}/>}
-            </main>
-          </div>
-          
-          {/* Report Modal renders completely standalone so printing hides the dashboard */}
-          <ReportModal report={activeReport} onClose={() => setActiveReport(null)} onEdit={loadReportIntoForm} totalIndicators={totalIndicators} />
-        </>
-      );
+      const captureData={circuit:selectedCircuit,school:selectedSchool,date:monitoringDate,staff:personSpeakingTo,designation,advisor:selectedAdvisor,notes:auditNotes,scores,informationSource};
+      const changeCapture=(field,value)=>({circuit:setSelectedCircuit,school:setSelectedSchool,date:setMonitoringDate,staff:setPersonSpeakingTo,designation:setDesignation,advisor:setSelectedAdvisor,notes:setAuditNotes,scores:setScores,informationSource:setInformationSource}[field]?.(value));
+      const beginCapture=(profile)=>{resetForm();if(profile){setSelectedCircuit(profile.circuit);setSelectedSchool(profile.school);}setView('capture');};
+      const saveDraft=()=>{const id=draftEditingId||crypto.randomUUID();const record={id,reportId:editingReportId,updatedAt:new Date().toISOString(),data:captureData};const next=[record,...draftRecords.filter(d=>d.id!==id)];if(persistDrafts(next)){setDraftEditingId(id);setNotice('Draft saved on this device. It is excluded from final school scores.');}};
+      const resumeDraft=d=>{const data=d.data;setSelectedCircuit(data.circuit);setSelectedSchool(data.school);setMonitoringDate(data.date);setPersonSpeakingTo(data.staff);setDesignation(data.designation);setSelectedAdvisor(data.advisor);setAuditNotes(data.notes);setScores(data.scores);setInformationSource(data.informationSource||'Not specified');setDraftEditingId(d.id);setEditingReportId(savedReports.some(r=>r.id===d.reportId)?d.reportId:null);setAiAnalysis(null);setView('capture');};
+      const dataTools=<div className="i-data-tools"><div className="i-actions"><button className="i-button" onClick={exportBackup}>Export backup</button><label className="i-button">Restore backup<input aria-label="Restore backup" type="file" accept=".json,application/json" className="sr-only" onChange={importBackup}/></label><button className="i-button" onClick={()=>download('elearning-reports-'+todayStr+'.csv',csvExport(savedReports),'text/csv;charset=utf-8')}>Export assessment CSV</button></div><p className="i-note">Backups include final reports, drafts, equipment and recorded recommendations. Shared live manager access is not connected.</p></div>;
+      return <><PrintStyles/><AppShell page={view} today={todayStr} onNavigate={page=>{if(page==='capture'&&view!=='capture')beginCapture();else setView(page);}}>
+        {[storageError,supportError,equipmentError,draftError].filter(Boolean).map((error,i)=><p className="i-error" role="alert" key={i}>{error}</p>)}
+        {notice&&<p className="i-notice" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}>×</button></p>}
+        {view==='capture'?<CaptureFindings key={String(editingReportId||'capture')} data={captureData} onChange={changeCapture} database={schoolDatabase} sections={monitoringSections} ratingScale={ratingScale} onSaveDraft={saveDraft} onFinalise={saveReport} onPreview={generateAIAnalysis} complete={formComplete} isSaving={isSaving} analysis={aiAnalysis} equipment={equipmentRecords} onSaveEquipment={persistEquipment} today={todayStr} isEdit={Boolean(editingReportId)} onExit={()=>setView('overview')}/>:<AdvisorDashboard page={view} onNavigate={setView} database={schoolDatabase} reports={savedReports} drafts={draftRecords} logs={supportLogs} equipment={equipmentRecords} onSaveEquipment={persistEquipment} onSaveLogs={persistSupport} today={todayStr} download={download} dataTools={dataTools} onNewAudit={beginCapture} onResumeDraft={resumeDraft} onDeleteDraft={id=>{if(window.confirm('Delete this unfinished draft? Final reports are unaffected.'))persistDrafts(draftRecords.filter(d=>d.id!==id));}} onViewReport={setActiveReport} onEditReport={loadReportIntoForm} onDeleteReport={deleteReport}/>}</AppShell><ReportModal report={activeReport} onClose={()=>setActiveReport(null)} onEdit={loadReportIntoForm} totalIndicators={totalIndicators}/></>;
     }
 
     // Mount the React Application
