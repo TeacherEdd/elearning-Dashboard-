@@ -135,3 +135,9 @@ Reports → KRA report offers quarter/date and advisor filters, counts activitie
 Overview includes reporting prompts for support without follow-up evidence, explicitly recorded open barriers and equipment snapshots older than 180 days. These are prompts to verify information, not visit schedules or official performance targets.
 
 Version 5 backups retain the optional activity metadata and correction history in supportLogs. Existing backups remain readable. Shared authentication and live synchronisation remain unconfigured: connecting a managed database and authorising the two advisor accounts and a read-only manager account is still required. No school data or credentials are committed to the public repository.
+
+## Simplified school reporting (0.6.1)
+
+KRA categories and the separate KRA report are no longer shown in the app or current management exports. Quick support asks about the need, support provided, intended change and optional resources/platforms and evidence. Existing classification metadata remains in backups for compatibility. Reports → Support history retains access to district activities, evidence updates and previous versions without KRA grouping.
+
+Overview shows three numbered challenge cards based on each school's latest final assessment within the circuit filter. Indicators scored 1–3 qualify; unassessed schools and drafts are excluded. Rank uses affected school count descending, then average score ascending, with stable indicator-key tie breaking. The card colour reflects its lowest score; counts show each score band separately. Each school counts once per indicator. Fewer than three challenges leaves explicitly empty slots; no findings are invented. School links open the relevant Summary. Red=1, orange=2, amber=3, blue=4, green=5; numeric labels accompany colour. The same colours appear in assessment scoring controls. LMS remains excluded.
