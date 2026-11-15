@@ -8,7 +8,7 @@
     "start": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/core.test.js tests/advisor.test.js tests/equipment-training.test.js tests/drafts.test.js tests/impact.test.js tests/support-activity.test.js",
+    "test": "node --test tests/core.test.js tests/advisor.test.js tests/equipment-training.test.js tests/drafts.test.js tests/impact.test.js tests/support-activity.test.js tests/focus.test.js",
     "test:ui": "npm run build && node --test tests/ui.test.js"
   },
   "dependencies": {
