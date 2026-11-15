@@ -10,7 +10,7 @@ import {EQUIPMENT_KEY,validateEquipment} from './equipment.js';
 import AdvisorDashboard from './AdvisorDashboard.jsx';
 import { SUPPORT_KEY, validateSupportLogs, validDate } from './advisor.js';
 import './styles.css';
-import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExport } from './core.js';
+import { INDICATORS, scoreBasis, calculateReadiness, validateReports, mergeReports, csvExport } from './core.js';
 
     import React, { useEffect, useMemo, useState } from 'react';
     import { createRoot } from 'react-dom/client';
@@ -75,6 +75,11 @@ import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExpor
           { key: 'teaching-4', name: 'Learner Digital Literacy', desc: 'Learners are able to use digital tools confidently and appropriately for learning.' },
         ],
       },
+      {id:'cyber',title:'Cyberwellness',icon:ShieldCheck,items:[
+        {key:'cyber-0',name:'Online Safety and Privacy',desc:'How effectively does the school teach learners and staff to protect personal information, passwords and accounts, and recognise online risks?'},
+        {key:'cyber-1',name:'Responsible Digital Behaviour',desc:'How consistently does the school promote respectful online behaviour, responsible sharing and healthy technology use?'},
+        {key:'cyber-2',name:'Cyberbullying and Reporting',desc:'How clear and understood are the school’s procedures for reporting and responding to cyberbullying or harmful online content?'},
+      ]},
     ];
 
 
@@ -86,6 +91,10 @@ import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExpor
     ];
 
     const indicatorGuidance = {
+      'Online Safety and Privacy':{problem:'Online safety and privacy guidance needs strengthening.',action:'Teach safe passwords, account protection, privacy and recognition of online risks.',advisor:'Support a practical online safety awareness activity for staff and learners.',school:'Review safe account practices and reinforce age-appropriate privacy guidance.'},
+      'Responsible Digital Behaviour':{problem:'Responsible and balanced technology use is not yet consistent.',action:'Teach respectful communication, responsible sharing and healthy technology routines.',advisor:'Model classroom activities that develop responsible digital behaviour.',school:'Reinforce acceptable-use expectations with staff, learners and families.'},
+      'Cyberbullying and Reporting':{problem:'Reporting and response procedures need to be clearer and better understood.',action:'Review the reporting route and explain how learners can seek help.',advisor:'Help the SMT communicate and review the school reporting procedure.',school:'Make safe reporting routes visible and check that staff and learners understand them.'},
+
       'Connectivity Quality': { problem: 'Internet reliability is limiting classroom use of digital tools.', action: 'Test coverage in all teaching spaces and monitor uptime weekly.', advisor: 'Support the school with a connectivity review and escalation plan.', school: 'Keep a simple fault log and follow up unresolved issues.' },
       'Physical Security': { problem: 'ICT equipment may be vulnerable because storage and access control need strengthening.', action: 'Review lockable storage and sign-out routines for devices.', advisor: 'Guide the school on minimum ICT protection measures.', school: 'Use clear storage and accountability routines.' },
       'Technical Maintenance': { problem: 'Repairs and upkeep are slowing down effective use of devices.', action: 'Introduce a maintenance register with dates and turnaround tracking.', advisor: 'Help the school set up a simple support workflow.', school: 'Assign a staff member to record and follow up faults.' },
@@ -163,15 +172,15 @@ import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExpor
       const categoryBreakdown = monitoringSections.map((section) => {
         const sectionEntries = section.items.map((item, idx) => ({
           name: item.name,
-          score: scoreMap[item.key] ?? 0,
-        }));
+          score: scoreMap[item.key] ?? null,
+        })).filter(item=>item.score!==null);
         const sectionAverage = sectionEntries.length 
             ? sectionEntries.reduce((sum, item) => sum + item.score, 0) / sectionEntries.length 
             : 0;
         return {
           title: section.title,
-          average: sectionAverage.toFixed(1),
-          status:
+          average: sectionEntries.length?sectionAverage.toFixed(1):'Not assessed',
+          status: !sectionEntries.length?'Not assessed':
             sectionAverage <= 2.5 ? 'Emerging'
             : sectionAverage < 3.5 ? 'Establishing'
             : sectionAverage < 4.5 ? 'Integrated'
@@ -320,7 +329,7 @@ import { INDICATORS, calculateReadiness, validateReports, mergeReports, csvExpor
 
         const indicatorsText = monitoringSections.map(sec => {
             return `${sec.title.toUpperCase()}\n` + 
-            sec.items.map((item, idx) => `  - ${item.name}: ${report.scores[item.key] || 0}/5`).join('\n');
+            sec.items.map((item, idx) => `  - ${item.name}: ${report.scores[item.key] ? report.scores[item.key]+'/5' : 'Not assessed'}`).join('\n');
         }).join('\n\n');
 
         return `WESTERN CAPE EDUCATION DEPARTMENT (WCED)
@@ -339,7 +348,7 @@ INTERVIEWEE: ${report.staff} (${report.designation})
 Score: ${report.avg} / 5.0
 Maturity Level: ${report.readiness}
 Information source: ${report.informationSource || 'Not specified'}
-Scoring basis: 11 indicators; LMS excluded
+Scoring basis: ${scoreBasis(report)} indicators; LMS excluded${scoreBasis(report)===11?'; Cyberwellness not assessed':''}
 
 RECORDED FINDINGS AND EVIDENCE
 ${report.notes || 'No additional observations recorded.'}
@@ -482,7 +491,7 @@ Innovation | Accountability | Care | Responsiveness`;
                   </div>
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Report Completion</div>
-                    <div className="mt-2 text-xl font-black text-slate-900">{INDICATORS.filter(key=>Number.isInteger(report.scores?.[key])).length}/{totalIndicators} Indicators</div>
+                    <div className="mt-2 text-xl font-black text-slate-900">{INDICATORS.filter(key=>Number.isInteger(report.scores?.[key])).length}/{scoreBasis(report)} Indicators · {scoreBasis(report)===11?'Legacy basis; Cyberwellness not assessed':'Includes Cyberwellness'}</div>
                     <div className="mt-1 text-sm font-bold text-slate-500">Source: {report.informationSource || 'Not specified'}</div>
                   </div>
                 </div>
@@ -512,11 +521,11 @@ Innovation | Accountability | Care | Responsiveness`;
                              <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-3 print:text-slate-600 print:mb-2">{section.title}</div>
                              <ul className="space-y-2 print:space-y-1">
                                  {section.items.map((item, idx) => {
-                                     const score = report.scores[item.key] || 0;
+                                     const score = report.scores[item.key];
                                      return (
                                          <li key={item.name} className="flex justify-between items-start gap-2 border-b border-slate-50 pb-1.5 last:border-0 last:pb-0 print:border-slate-200 print:pb-1">
                                              <span className="text-[11px] font-semibold text-slate-600 leading-tight print:text-[10pt] print:text-slate-800">{item.name}</span>
-                                             <span className="text-[11px] font-black text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded print:bg-white print:border print:border-slate-200 print:text-[10pt] print:text-black">{score}/5</span>
+                                             <span className="text-[11px] font-black text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded print:bg-white print:border print:border-slate-200 print:text-[10pt] print:text-black">{score?`${score}/5`:'Not assessed'}</span>
                                          </li>
                                      );
                                  })}

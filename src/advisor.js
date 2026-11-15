@@ -1,16 +1,16 @@
 import {validateActivity,validateActivityHistory} from './support-activity.js';
 import {validateTrainingLink} from './training.js';
-import {INDICATORS, calculateReadiness} from './core.js';
+import {INDICATORS, calculateReadiness,meanScore,scoreBasis} from './core.js';
 
 export const SUPPORT_KEY = 'ecked-advisor-support-v1';
 export const schoolKey = (circuit,school) => `${circuit.trim().toUpperCase()}|${school.trim().toUpperCase()}`;
-export const scoreMean = report => report ? INDICATORS.reduce((sum,key)=>sum+report.scores[key],0)/INDICATORS.length : null;
+export const scoreMean = report => report ? meanScore(report.scores) : null;
 export const validDate = value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value;
 export const daysSince = (date,asOf) => Math.floor((Date.parse(asOf)-Date.parse(date))/86400000);
 export const overdue = (entry,asOf) => entry.status!=='Completed' && Boolean(entry.dueDate) && entry.dueDate<asOf;
-export const SECTIONS = [{id:'env',name:'Enabling Environment',count:3},{id:'culture',name:'e-Culture',count:4},{id:'teaching',name:'e-Teaching',count:4}];
+export const SECTIONS = [{id:'env',name:'Enabling Environment',count:3},{id:'culture',name:'e-Culture',count:4},{id:'teaching',name:'e-Teaching',count:4},{id:'cyber',name:'Cyberwellness',count:3}];
 export function sectionScores(report) {
-  return SECTIONS.map(s=>({...s,score:report ? INDICATORS.filter(k=>k.startsWith(s.id+'-')).map(k=>report.scores[k]).reduce((a,b)=>a+b,0)/s.count : null}));
+  return SECTIONS.map(s=>({...s,score:report ? (()=>{const values=INDICATORS.filter(k=>k.startsWith(s.id+'-')&&Number.isInteger(report.scores[k])).map(k=>report.scores[k]);return values.length?values.reduce((a,b)=>a+b,0)/values.length:null;})() : null}));
 }
 export function validateSupportLogs(value) {
   if (!Array.isArray(value) || value.length>10000) throw new Error('Expected up to 10,000 support records.');
@@ -46,7 +46,7 @@ export function schoolProfiles(database,reports,logs,asOf,equipment=[]) {
     profile.history.sort((a,b)=>b.date.localeCompare(a.date)||(b.updatedAt||'').localeCompare(a.updatedAt||''));
     profile.support.sort((a,b)=>b.date.localeCompare(a.date));
     const latest=profile.history[0]||null,previous=profile.history[1]||null;
-    const score=scoreMean(latest), delta=previous?score-scoreMean(previous):null;
+    const score=scoreMean(latest), delta=previous&&scoreBasis(latest)===scoreBasis(previous)?score-scoreMean(previous):null;
     const overdueCount=profile.support.filter(e=>overdue(e,asOf)).length;
     const stale=Boolean(latest && daysSince(latest.date,asOf)>180);
     const urgentIndicators=latest?INDICATORS.filter(k=>latest.scores[k]<=2).length:0;
@@ -78,11 +78,11 @@ export function managementDocument({profiles,logs,from,to,circuit,managerNotes,g
   const table=(headers,rows)=>`<table><thead><tr>${headers.map(x=>`<th>${h(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(x=>`<td>${h(x)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>ECKED Management Summary</title><style>body{font:15px/1.5 Arial,sans-serif;color:#13243a;max-width:1100px;margin:40px auto;padding:20px}h1{font-size:28px}h2{margin-top:28px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;border:1px solid #cbd5e1;padding:8px;vertical-align:top}th{background:#edf2f7}p{white-space:pre-wrap}small{color:#475569}@media print{body{margin:0;padding:0}thead{display:table-header-group}tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body>${logoUrl?`<img src="${h(logoUrl)}" alt="Eden and Central Karoo Education District" style="width:100px;height:100px;float:right;object-fit:contain">`:""}<h1>ECKED · School Findings Report</h1><p>Advisor scope: ${h(advisor)}<br>Scope: ${h(circuit||'All circuits')} · Period: ${h(from)} to ${h(to)}<br>Generated: ${h(generatedOn)} · Findings snapshot as at ${h(to)}</p>
   <p><strong>${m.assessed} of ${m.total} registered schools assessed (${m.coverage}%).</strong> ${m.unassessed} not yet assessed. Latest-score average: ${m.average??'Not available'}/5. ${m.priority} assessed schools have at least one indicator at 1–2; ${m.stale} assessments are older than 180 days.</p>
-  <p>Final reports in period: ${m.assessments} across ${m.schoolsAssessedInPeriod} schools. Scores are calculated using 11 included indicators; LMS is excluded. Drafts are not rated.</p>
+  <p>Final reports in period: ${m.assessments} across ${m.schoolsAssessedInPeriod} schools. Current assessments use 14 indicators including Cyberwellness. Legacy assessments retain their 11-indicator basis; missing Cyberwellness is not scored as zero. District averages may combine these bases and should be interpreted with coverage in mind. LMS is excluded. Drafts are not rated.</p>
   <p>Latest two recorded assessments: ${m.improved} improved, ${m.declined} declined, ${m.unchanged} unchanged. These comparisons are not restricted to the reporting period and do not establish that support caused the change.</p>
   <h2>Advisor commentary and decisions needed</h2><p>${h(managerNotes||'No commentary entered.')}</p>
   <h2>Coverage by circuit</h2>${table(['Circuit','Registered','Assessed','Average /5'],m.circuits.map(c=>[c.circuit,c.total,c.assessed,c.average??'Not assessed']))}
-  <h2>School position as at ${h(to)}</h2>${table(['School','Circuit','Last assessed','Level','Score /5','Change (latest two)','Attention'],profiles.map(p=>[p.school+(p.inRegister?'':' [outside register]'),p.circuit,p.latest?.date||'Not assessed',p.level,p.score?.toFixed(1)??'—',p.delta===null?'No comparison':(p.delta>=0?'+':'')+p.delta.toFixed(2),p.priority]))}
+  <h2>School position as at ${h(to)}</h2>${table(['School','Circuit','Last assessed','Level','Score /5','Indicators scored','Change (same basis only)','Attention'],profiles.map(p=>[p.school+(p.inRegister?'':' [outside register]'),p.circuit,p.latest?.date||'Not assessed',p.level,p.score?.toFixed(1)??'—',p.latest?scoreBasis(p.latest):'—',p.delta===null?'No comparison':(p.delta>=0?'+':'')+p.delta.toFixed(2),p.priority]))}
   <h2>Recorded school findings</h2>${table(['School','Assessment date','Information source','Findings and evidence'],profiles.filter(p=>p.latest).map(p=>[p.school,p.latest.date,p.latest.informationSource||'Not specified',p.latest.notes||'No additional observations recorded.']))}
   <h2>Recorded recommendations and support in period</h2>${table(['Date','School','Type','Recorded advice / support','Advisor / responsible person','Training verification'],logs.filter(l=>l.date>=from&&l.date<=to).map(l=>[l.date,l.school,l.type,l.summary,l.owner,l.training?`Attendance: ${l.training.attendance}; implementation: ${l.training.implementation}`:'—']))}
   ${kraHtml}

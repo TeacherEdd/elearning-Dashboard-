@@ -163,3 +163,9 @@ Policy/eLearning Plan, ICT Adoption Strategy and Digital Skills Course have sepa
 ## Transformation Agent step
 
 Transformation Agent is the fifth focus school pathway step, after Digital Skills Course. Its independent checkbox saves just like steps 2–4, with a purple accent and a fifth completion count. Audit still derives from finalised Capture findings. The overall badge now counts out of five. New pathwayVersion 4 records contain four manual booleans. Previous pathway records retain steps 1–4; Transformation Agent starts unchecked and is never inferred from older completion totals. History and version 6 backups remain compatible.
+
+## Cyberwellness assessment heading
+
+Cyberwellness adds Online Safety and Privacy (`cyber-0`), Responsible Digital Behaviour (`cyber-1`), and Cyberbullying and Reporting (`cyber-2`). New and edited final assessments require all 14 current indicators. The same 1–5 scale applies, with an evidence prompt asking for school practices and procedures rather than identifiable incident details. Cyberwellness feeds section findings, challenge rankings, guidance, training matches, print/text reports and CSV exports; LMS remains excluded.
+
+Legacy complete 11-indicator reports remain valid with no invented cyber scores. All three cyber ratings must be present together in a current final record; partial cyber records are rejected. Legacy reports label Cyberwellness Not assessed and retain their original mean and scoring basis. CSV includes Indicators scored. Progress deltas are withheld across different scoring bases. Management summaries disclose that aggregate means can include 11- and 14-indicator reports and should be interpreted with coverage in mind. Drafts can be partial, including the new indicators, and older drafts require the three extra ratings before finalisation. Existing backups and focus-school automatic audits continue to accept complete legacy reports.

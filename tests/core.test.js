@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {INDICATORS, calculateReadiness, calculateDistrictInsights, validateReports, mergeReports, csvExport} from '../src/core.js';
+import {INDICATORS,LEGACY_INDICATORS,CYBER_INDICATORS,scoreBasis, calculateReadiness, calculateDistrictInsights, validateReports, mergeReports, csvExport} from '../src/core.js';
 const scores = n => Object.fromEntries(INDICATORS.map(k=>[k,n]));
 const report = (id=1,n=3,date='2026-11-13') => ({id,school:'School A',circuit:'Circuit 8',date,staff:'Principal',designation:'Principal',advisor:'Advisor',scores:scores(n),notes:''});
 test('maturity thresholds use raw averages and exclude invalid or unknown scores',()=>{
@@ -34,7 +34,9 @@ test('CSV quotes multiline text and neutralizes spreadsheet formulas',()=>{
 });
 
 test('eleven-indicator scoring ignores LMS while preserving the original legacy value',()=>{
- const legacy={...report(),scores:{...scores(4),'teaching-1':1,'teaching-2':5},informationSource:'Staff reported'};
- const restored=validateReports([legacy])[0];assert.equal(restored.scores['teaching-1'],1);assert.equal(restored.scores['teaching-2'],5);assert.equal(restored.informationSource,'Staff reported');assert.equal(calculateReadiness(restored.scores).score,'4.1');assert.equal(INDICATORS.length,11);assert.ok(!INDICATORS.includes('teaching-1'));
+ const legacy={...report(),scores:{...Object.fromEntries(LEGACY_INDICATORS.map(k=>[k,4])),'teaching-1':1,'teaching-2':5},informationSource:'Staff reported'};
+ const restored=validateReports([legacy])[0];assert.equal(restored.scores['teaching-1'],1);assert.equal(restored.scores['teaching-2'],5);assert.equal(restored.informationSource,'Staff reported');assert.equal(calculateReadiness(restored.scores).score,'4.1');assert.equal(INDICATORS.length,14);assert.ok(!INDICATORS.includes('teaching-1'));
  const exported=csvExport([restored]);assert.ok(!exported.split('\r\n')[0].includes('teaching-1'));
 });
+
+test('Cyberwellness extends current scoring without inventing legacy ratings',()=>{const legacy={...report(),scores:Object.fromEntries(LEGACY_INDICATORS.map(k=>[k,4]))};const old=validateReports([legacy])[0];assert.equal(scoreBasis(old),11);assert.equal(calculateReadiness(old.scores).score,'4.0');assert.equal(old.scores['cyber-0'],undefined);const modern={...report(),scores:{...scores(4),'cyber-0':1,'cyber-1':2,'cyber-2':3}};assert.equal(scoreBasis(validateReports([modern])[0]),14);assert.equal(calculateReadiness(modern.scores).score,'3.6');assert.throws(()=>validateReports([{...legacy,scores:{...legacy.scores,'cyber-0':3}}]));assert.throws(()=>validateReports([{...legacy,scoreBasis:14}]));assert.match(csvExport([old]),/Indicators scored/);});
